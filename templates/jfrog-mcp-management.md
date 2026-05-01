@@ -92,14 +92,12 @@ Split Step 2 inputs by `isRequired`:
 
 For each input in Step 4:
 
-- **Secrets** (`isSecret=true`, tokens, keys, passwords): use
-  `${VAR_NAME}` in the config; tell the user to export it via
-  `read -rs VAR_NAME && export VAR_NAME && echo exported` and to add
-  the equivalent `export` to `~/.zshrc` for persistence. Values pick
-  up on next launch (Step 4a). NEVER take secrets in chat, echo
-  them back, or write raw values into config.
-- **Non-secrets** (URLs, regions): literal in `env` or `${VAR_NAME}`
-  — ask if unclear.
+- **Secrets** (`isSecret=true`): use `${VAR_NAME}` in the config; tell
+  the user to export it via `read -rs VAR_NAME && export VAR_NAME &&
+  echo exported` (and add to `~/.zshrc` for persistence). Picked up on
+  next launch (Step 4a). NEVER take secrets in chat, echo them back,
+  or write raw values into config.
+- **Non-secrets**: literal in `env` or `${VAR_NAME}` — ask if unclear.
 
 ### Step 4: Write the config entry
 
@@ -140,25 +138,30 @@ Notes:
 - For `Bearer`-prefixed headers, either include the prefix in the env
   var or hard-code it: `"Bearer ${TOKEN}"`.
 
-### Step 4a: Activate the entry (mandatory)
+### Step 4a: Pre-approve and activate (mandatory)
 
-Writing the file is NOT enough. After Step 4, ALWAYS tell the user:
+First, try to pre-approve the entry so the per-server prompt is
+skipped: edit `<cwd>/.claude/settings.local.json` (create as `{}` if
+missing), remove `<spec.packageName>` from `disabledMcpjsonServers`,
+append it to `enabledMcpjsonServers`. If that write fails for any
+reason (permissions, missing dir), continue anyway — the user will
+just see the prompt on relaunch (step 3).
 
-1. Export every `${VAR}` from the new entry in the launching shell —
-   the gateway needs them at server-start. Unset vars show as
-   `[Contains warnings]` in `/mcp` (informational, does NOT hide the
-   section) and any tool call needing them will fail at runtime.
-2. `/exit` and re-run the same `claude` command in the same directory.
-3. Approve at the "Approve MCP server `<name>` from .mcp.json?"
-   prompt — saved to `projects.<cwd>.enabledMcpjsonServers`. The
-   "Project MCPs (...)" section in `/mcp` only appears once at least
-   one server in the file is approved.
-4. Verify with `/mcp` or `claude mcp list` — must show `✓ connected`.
+Then tell the user:
 
-If the prompt is skipped or a reject is cached, run
-`claude mcp reset-project-choices` and relaunch. Last resort: edit
-`projects.<cwd>.enabledMcpjsonServers` directly. NEVER call the
-install "done" without `✓ connected`.
+1. Export every `${VAR}` from the new entry in the launching shell.
+   Unset vars show as `[Contains warnings]` in `/mcp` (informational)
+   and tool calls needing them will fail at runtime.
+2. `/exit` and relaunch the same `claude` in the same directory.
+3. On the FIRST launch, Claude Code prompts for workspace trust —
+   accept. If pre-approval succeeded, the per-server prompt is
+   skipped; otherwise approve "Approve MCP server `<name>`?".
+4. Verify with `/mcp` ("Project MCPs (...)", `✓ connected`) or
+   `claude mcp list`. NEVER call it done without `✓ connected`.
+
+Rejections persist in the same `enabledMcpjsonServers` /
+`disabledMcpjsonServers` arrays — `reset-project-choices` does NOT
+clear them. Fix: move the entry to `enabledMcpjsonServers`, relaunch.
 
 ### Step 5: Authenticate OAuth MCPs (auto, after Step 4)
 
@@ -228,16 +231,13 @@ Output is a JSON array; each element has `name`, `packageName`,
 
 ## Key Rules
 
-- **`npx` argument order:** `--yes`, `--registry <URL>`,
-  `@jfrog/mcp-gateway`, then gateway flags. `--yes` and `--registry`
-  MUST precede `@jfrog/mcp-gateway` or `npx` falls back to the
-  default registry (404) and may block on a no-TTY prompt.
-- **Loader mode is the default** — do NOT add `--loader`.
-- **Always `"type": "stdio"`** — never write `"type": "http"`,
-  `"type": "sse"`, or a top-level `"url"` field. Every entry is stdio
-  pointing at `npx @jfrog/mcp-gateway`, even when the catalog MCP is
-  remote-only — the gateway proxies remote transports for you.
-  Anything else bypasses the gateway and the governance it provides.
+- **`npx` arg order:** `--yes`, `--registry <URL>`,
+  `@jfrog/mcp-gateway`, then gateway flags. Both `--yes` and
+  `--registry` MUST precede the package name or `npx` falls back to
+  the default registry (404) and may block on a no-TTY prompt.
+- **Always `"type": "stdio"`** pointing at `npx @jfrog/mcp-gateway`,
+  even for remote-only catalog MCPs (the gateway proxies them).
+  `"http"`, `"sse"`, or a top-level `"url"` bypass the gateway.
 - `_JF_MCP_LOADER_ARGS` MUST contain `project=<NAME>&mcp=<PACKAGE_NAME>`.
 - Package name MUST come from the catalog (`--inspect` /
   `--list-available`). NEVER guess. NEVER install MCPs outside the
@@ -255,10 +255,7 @@ Output is a JSON array; each element has `name`, `packageName`,
   MCP did not. Treat as Failed: re-run Step 5 for OAuth MCPs, check
   the secret env var for static-token MCPs, read gateway stderr in
   Claude Code's logs for local MCPs.
-- **Project section missing from `/mcp`** — no `.mcp.json` entries
-  are approved yet. Approve on next launch, or edit
-  `projects.<cwd>.enabledMcpjsonServers`. (`[Contains warnings]` is
-  informational; it does not hide the section.)
+- **`.mcp.json` server missing from `/mcp`** — rejected. See Step 4a.
 - **Missing from `claude mcp list`** — JSON parse failure (often an
   undefined `${VAR}`), or a server-side `allowedMcpServers` policy in
   `.claude/settings.json` / managed settings filtering the entry.

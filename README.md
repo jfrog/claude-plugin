@@ -18,7 +18,19 @@ Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-ski
 
 ## JFrog MCP Gateway integration
 
-When the plugin is enabled, every Claude Code session starts with the rules in [`templates/jfrog-mcp-management.md`](templates/jfrog-mcp-management.md) injected into the model's context (via the [`additionalContext`](https://docs.anthropic.com/en/docs/claude-code/hooks#sessionstart) `SessionStart` hook output). **No instructions file is written to your repo** — the rules live only in the plugin and reach the model directly through the hook.
+When the plugin is enabled, every Claude Code session starts by asking the JFrog MCP Gateway whether the current tenant is entitled to the AI Catalog feature (`npx @jfrog/mcp-gateway --should-inject`). If the gateway returns **entitled**, the rules in [`templates/jfrog-mcp-management.md`](templates/jfrog-mcp-management.md) are injected into the model's context via the [`additionalContext`](https://docs.anthropic.com/en/docs/claude-code/hooks#sessionstart) `SessionStart` hook output. **No instructions file is written to your repo** — the rules live only in the plugin and reach the model directly through the hook.
+
+The check fails closed: anything other than a clean "entitled" response (entitlement denied, no JFrog server resolvable, network/`npx` failure, timeout) skips the injection so the plugin stays inert when the gateway can't authoritatively say "yes".
+
+You can short-circuit the check with the `JF_MCP_GATEWAY_FORCE_ENABLE` env var in the shell that launches Claude Code — this is mainly for tests, demos, and air-gapped setups:
+
+| Value | Effect |
+| --- | --- |
+| `true` | Always inject the instructions; skip the entitlement check entirely. |
+| `false` | Never inject; skip the entitlement check entirely. |
+| unset / anything else | Run `--should-inject` and respect its decision (default). |
+
+Set `JF_MCP_GATEWAY_DEBUG=1` to have the hook log its decision to stderr (visible in Claude Code's logs panel) for troubleshooting.
 
 The rules tell Claude to:
 
@@ -27,7 +39,9 @@ The rules tell Claude to:
 - Write the entry to **`.mcp.json` (project scope) by default** — creating the file if it doesn't exist — so the entry stays alongside the project and the team can share it via git. Only fall back to `~/.claude.json` (user scope) when you ask for it explicitly. Either way, secrets stay out of the file via `${ENV_VAR}` expansion (Claude Code has no native interactive secret prompt).
 - Run the gateway's `--login` automatically for OAuth-only remote MCPs.
 
-After a new MCP entry is written, you must (1) **export every `${VAR}` referenced by the entry** in the shell that will launch Claude Code so the gateway has them at server-start time (an unset variable shows as `[Contains warnings]` in `/mcp` — informational only — and any tool call needing that value will fail at runtime), (2) **quit and relaunch Claude Code** in the same directory, and (3) **approve the server** at the `Approve MCP server <name> from .mcp.json?` prompt. Claude Code only reads `mcpServers` at session start, and `.mcp.json` entries require explicit per-project approval (stored under `projects.<cwd>.enabledMcpjsonServers` in `~/.claude.json`). The "Project MCPs (.../.mcp.json)" section in `/mcp` only appears once at least one server in the file is approved. Verify with `/mcp` or `claude mcp list`.
+After a new MCP entry is written, you must (1) **export every `${VAR}` referenced by the entry** in the shell that will launch Claude Code so the gateway has them at server-start time (an unset variable shows as `[Contains warnings]` in `/mcp` — informational only — and any tool call needing that value will fail at runtime), and (2) **quit and relaunch Claude Code** in the same directory. The first time you launch in a project, Claude Code prompts you both for workspace trust and once per `.mcp.json` server (`Approve MCP server <name> from .mcp.json?`); accept each one. On subsequent launches the `mcpServers` block loads silently. Verify with `/mcp` (under "Project MCPs (.../.mcp.json)") or `claude mcp list`.
+
+Note: in Claude Code v2.1.x, per-project approve/reject decisions are persisted in **`<cwd>/.claude/settings.local.json`** (`enabledMcpjsonServers` / `disabledMcpjsonServers`), **not** in `~/.claude.json`. `claude mcp reset-project-choices` and deleting `projects.<cwd>` from `~/.claude.json` do **not** touch that file, so a previously-rejected `.mcp.json` server stays silently disabled and is never re-prompted. To re-enable it, edit `<cwd>/.claude/settings.local.json`, remove the entry from `disabledMcpjsonServers`, append it to `enabledMcpjsonServers`, and relaunch.
 
 To **enforce** the gateway as the only allowed transport in a project, add an `allowedMcpServers` policy to `.claude/settings.json`:
 
