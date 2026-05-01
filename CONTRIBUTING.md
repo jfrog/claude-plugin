@@ -10,7 +10,13 @@ All contributors must sign the [JFrog CLA](https://jfrog.com/cla/) before contri
 
 1. **Fork** the repository and create a feature branch from `main`.
 2. Make your changes, ensuring they follow the existing code style and project conventions.
-3. Before a release or directory submission, run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
+3. **Validate** locally:
+
+```bash
+node scripts/validate-claude-plugin.mjs
+```
+
+Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
 
 4. **Test** by loading the repository as the plugin (the repo root is the plugin root):
 
@@ -25,6 +31,7 @@ Exercise the skills you changed (for example `/jfrog:<skill-name>`). Run `/reloa
 
 ## Pre-release checklist
 
+- [ ] `node scripts/validate-claude-plugin.mjs` passes.
 - [ ] `claude plugin validate` passes (before directory submission or major releases).
 - [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) when the plugin changes.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
