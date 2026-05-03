@@ -20,14 +20,18 @@ necessary:
 
 **Server ID**
 
-1. `.claude/settings.json` → `allowedMcpServers[0].serverCommand`,
-   take the value after `--server`.
-2. Else any existing `mcpServers` entry (`.mcp.json` or
-   `~/.claude.json`), value after `--server`.
-3. Else read `~/.jfrog/jfrog-cli.conf.v6`
+1. Any existing `mcpServers` entry in `.mcp.json` (project) or
+   `~/.claude.json` (top-level user scope, or
+   `projects.<path>.mcpServers`) — take the value after `--server`
+   in `args`.
+2. Else read `~/.jfrog/jfrog-cli.conf.v6`
    (`%USERPROFILE%\.jfrog\jfrog-cli.conf.v6` on Windows) via a
    terminal command (file-search skips hidden dirs). List the IDs
-   and ask the user. NEVER try multiple servers - pick one.
+   and ask the user.
+3. Else (file missing, empty, or unreadable) ask the user for the
+   server ID directly — do NOT guess, do NOT default to anything.
+
+NEVER try multiple servers — pick one.
 
 **Project**
 
@@ -48,8 +52,13 @@ necessary:
 
 ### Step 2: Inspect the MCP in the catalog
 
-Run a SINGLE command — no Fetch/WebFetch, no custom curl/Python, no
-direct JFrog API calls.
+Step 2 needs a specific MCP name. If the user did NOT name one, do
+not call `--inspect` — go to "Listing MCPs > Available MCPs (JFrog
+AI Catalog)" instead, show the catalog, have them pick, then come
+back to Step 2 with the chosen name.
+
+Once you have a name, run a SINGLE command — no Fetch/WebFetch, no
+custom curl/Python, no direct JFrog API calls:
 
 ```
 npx --yes \
@@ -70,9 +79,9 @@ From the output JSON, extract (keep BOTH required AND optional):
   (each has `name` plus `mcpInput.mcpInputDetails` with the same
   fields).
 
-On non-zero exit, show the error and fall back to `--list-available`
-(see "Listing MCPs"). If the user did NOT name an MCP, run
-`--list-available` directly.
+On non-zero exit (typo, MCP not in catalog, network error, etc.),
+show the error verbatim, then run `--list-available` (see "Listing
+MCPs") so the user can pick a valid name and retry.
 
 ### Step 3: Plan inputs
 
@@ -104,8 +113,7 @@ Add the entry under `mcpServers` in the target config (default
 `.mcp.json` — see Step 1). **`--registry <URL>` MUST come BEFORE
 `@jfrog/mcp-gateway`** or `npx` falls back to the default registry
 (404, no-TTY prompt). Use `"type": "stdio"` — never `"http"`,
-`"sse"`, or a top-level `"url"` (those bypass the gateway). Do NOT
-add `--loader` (loader mode is the default with `--server`).
+`"sse"`, or a top-level `"url"` (those bypass the gateway).
 
 ```json
 {
@@ -170,9 +178,9 @@ Then tell the user:
    loaded. Empty `Capabilities:` = Failed; follow Troubleshooting
    "`✓ connected` but 0 tools".
 
-Rejections persist in the same `enabledMcpjsonServers` /
-`disabledMcpjsonServers` arrays — `reset-project-choices` does NOT
-clear them. Fix: move the entry to `enabledMcpjsonServers`, relaunch.
+If a previous rejection is sticking and you can't get back to
+"approved", see Troubleshooting "MCP still appears as approved (or
+won't go away) after editing `.mcp.json`".
 
 ### Step 5: Authenticate OAuth MCPs (auto, after Step 4)
 
@@ -222,8 +230,9 @@ Outcomes:
    `_JF_MCP_LOADER_ARGS`), server ID (value after `--server`), scope.
 3. If a configured entry does not appear in `claude mcp list`, it is
    either pending approval (see Step 4a) or filtered by an
-   `allowedMcpServers` policy in `.claude/settings.json` /
-   managed settings.
+   `allowedMcpServers` / `deniedMcpServers` policy in managed
+   settings (`managed-settings.json`; `allowedMcpServers` is
+   managed-only).
 
 ### Available MCPs (JFrog AI Catalog)
 
@@ -262,9 +271,10 @@ Output is a JSON array; each element has `name`, `packageName`,
   gateway. NEVER use Fetch/WebFetch for catalog calls.
 - NEVER write a raw secret into `.mcp.json` or `~/.claude.json` —
   always `${ENV_VAR}`. NEVER show tokens / API keys.
-- NEVER ask for info already in `.claude/settings.json`, existing
-  `mcpServers` entries, `JF_PROJECT`, or `~/.jfrog/jfrog-cli.conf.v6`
-  (read via terminal — file-search skips hidden dirs).
+- NEVER ask for info already in existing `mcpServers` entries
+  (`.mcp.json` / `~/.claude.json`), `JF_PROJECT`, or
+  `~/.jfrog/jfrog-cli.conf.v6` (read via terminal — file-search
+  skips hidden dirs).
 - NEVER try multiple servers — ask the user to pick one.
 
 ## Troubleshooting
@@ -306,8 +316,9 @@ Output is a JSON array; each element has `name`, `packageName`,
   optionally add to `disabledMcpjsonServers` to explicitly block),
   then `/exit` and relaunch.
 - **Missing from `claude mcp list`** — JSON parse failure (often an
-  undefined `${VAR}`), or a server-side `allowedMcpServers` policy in
-  `.claude/settings.json` / managed settings filtering the entry.
+  undefined `${VAR}`), or an `allowedMcpServers` / `deniedMcpServers`
+  policy in managed settings (`managed-settings.json`) filtering the
+  entry.
 - **Gateway: missing JFrog credentials** (loader can't authenticate
   to the JFrog server) — run `jf c add <SERVER_ID>` or export
   `JFROG_ACCESS_TOKEN` / `JF_ACCESS_TOKEN`, then relaunch.

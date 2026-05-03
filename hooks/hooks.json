@@ -6,7 +6,7 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs",
-            "timeout": 30
+            "timeout": 5
           }
         ]
       }
