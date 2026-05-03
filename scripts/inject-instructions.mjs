@@ -5,11 +5,16 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const root = process.env.CLAUDE_PLUGIN_ROOT;
-if (!root || process.env.JF_MCP_GATEWAY_FORCE_ENABLE !== "true") {
+if (process.env.JF_MCP_GATEWAY_FORCE_ENABLE !== "true") {
   process.exit(0);
 }
+
+// Derive the plugin root from this script's own location instead of relying
+// on CLAUDE_PLUGIN_ROOT, which Claude Code interpolates into the hook command
+// string but does not always export to the subprocess.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 let template;
 try {
