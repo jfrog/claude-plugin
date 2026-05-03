@@ -10,11 +10,38 @@ the value of the `JFROG_MCP_GATEWAY_REPO` environment variable if it
 is set. Otherwise use
 `https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/`.
 
+**Pre-flight (applies to every gateway command)**: before running
+ANY `npx ... @jfrog/mcp-gateway ...` invocation (`--list-available`,
+`--inspect`, `--login`), you MUST have a confirmed `<SERVER_ID>` and
+`<PROJECT>`. Resolve each via Step 1's chain (existing `mcpServers`
+entries → JFrog CLI config / env → ask the user). If even one is
+unknown after the chain, STOP and ask — do NOT run the command with
+guesses, do NOT use `default`, do NOT pick the first match from
+`~/.jfrog/jfrog-cli.conf.v6` without confirming. Resolving the user
+to one server and one project is a hard prerequisite.
+
 ## Adding an MCP
 
-When asked to add an MCP, do ALL of the following autonomously — do
-NOT ask for project, server, or package name unless absolutely
-necessary:
+**Did the user name a specific MCP package?** ("add `foo-mcp`",
+"install `@scope/bar`"). If NOT — they said something like "yes",
+"add an MCP", "what can I install" — your FIRST action is to show
+them the catalog so they can pick:
+
+1. Resolve `<SERVER_ID>` and `<PROJECT>` per the Pre-flight rule at
+   the top of this document (read `~/.jfrog/jfrog-cli.conf.v6`,
+   present the list of servers, ask which one; then ask for the
+   project unless `JF_PROJECT` is set).
+2. Run "Listing MCPs > Available MCPs (JFrog AI Catalog)" with that
+   server + project and present the result as a numbered table.
+3. Wait for the user to pick. Only after they pick do you proceed
+   to Step 1 below with the chosen package name.
+
+NEVER ask "which package would you like?" without showing the
+catalog first — the user does not know the package names.
+
+Once you have a specific MCP package name, do ALL of the following
+autonomously — do NOT ask for project, server, or package name
+unless absolutely necessary:
 
 ### Step 1: Determine project, server, and target config file
 
@@ -221,13 +248,29 @@ Outcomes:
 
 ## Listing MCPs
 
+**Route the request first** — pick which subsection to run BEFORE
+touching any file or shell:
+
+| User said… | Run |
+| --- | --- |
+| "available", "what can I install", "what's in the catalog", "list MCPs" without other context | **Available MCPs (JFrog AI Catalog)** below — go straight to `--list-available`; do NOT inspect local files first |
+| "installed", "configured", "connected", "running", "what MCPs do I have" | **Installed MCPs** below |
+| ambiguous / both | run **both** subsections in order: Installed first, then Available, and present them as separate tables |
+
+NEVER invent MCP integrations from outside the catalog. The only authoritative
+source for what's available is `--list-available` against the
+configured server + project. If that command returns nothing or
+errors, say so — do not pad the answer with names from elsewhere.
+
 ### Installed MCPs
 
 1. Run `claude mcp list` for connection status (one row per server).
-2. For JFrog metadata, read `mcpServers` from both `.mcp.json` (project
-   scope) and top-level `~/.claude.json` (user scope), and for each
-   entry show: display name, package (`mcp=` in
-   `_JF_MCP_LOADER_ARGS`), server ID (value after `--server`), scope.
+2. For JFrog metadata, read `mcpServers` directly from `.mcp.json`
+   (project scope) and top-level `~/.claude.json` (user scope) —
+   use the file-read tool or a single `jq` invocation, NOT chained
+   `python3 -c "..."` pipes. For each entry show: display name,
+   package (`mcp=` in `_JF_MCP_LOADER_ARGS`), server ID (value after
+   `--server`), scope.
 3. If a configured entry does not appear in `claude mcp list`, it is
    either pending approval (see Step 4a) or filtered by an
    `allowedMcpServers` / `deniedMcpServers` policy in managed
@@ -236,9 +279,19 @@ Outcomes:
 
 ### Available MCPs (JFrog AI Catalog)
 
-1. Determine project + server using the same chain as Step 1 of
-   "Adding an MCP".
-2. Run:
+1. Determine **server** and **project** using the same chain as
+   Step 1 of "Adding an MCP". Both are mandatory for the command
+   below — if either is unknown after Step 1's chain (no
+   `mcpServers` entries, no `~/.jfrog/jfrog-cli.conf.v6`, no
+   `JF_PROJECT`), STOP and ask the user. Do NOT proceed with a
+   guess, do NOT use `default`, do NOT pick a single server from
+   `~/.jfrog/jfrog-cli.conf.v6` without confirming.
+   `--list-available` does NOT require any existing `mcpServers`
+   entry or pre-installed gateway — `npx --yes` fetches the gateway
+   on demand, so this works on a fresh machine too.
+2. Run EXACTLY this command — the flag is `--list-available` (with
+   the leading `--`), `--server` and `--project` are passed as CLI
+   flags, and **no env vars are needed**:
 
 ```
 npx --yes \
@@ -265,7 +318,15 @@ Output is a JSON array; each element has `name`, `packageName`,
 - **Always `"type": "stdio"`** pointing at `npx @jfrog/mcp-gateway`,
   even for remote-only catalog MCPs (the gateway proxies them).
   `"http"`, `"sse"`, or a top-level `"url"` bypass the gateway.
-- `_JF_MCP_LOADER_ARGS` MUST contain `project=<NAME>&mcp=<PACKAGE_NAME>`.
+- `_JF_MCP_LOADER_ARGS` is **only** for the entry Claude Code
+  launches at session start (Step 4's `mcpServers.*.env`); MUST
+  contain `project=<NAME>&mcp=<PACKAGE_NAME>`.
+  NEVER pass `_JF_MCP_LOADER_ARGS` to `--list-available`,
+  `--inspect`, or `--login` — those take `--server` / `--project`
+  as CLI flags only.
+- NEVER use `default` as a project name. If the project is unknown
+  after Step 1's chain (existing `mcpServers` entries → `JF_PROJECT`
+  env var), STOP and ask the user. Same for server ID.
 - Package name MUST come from the catalog (`--inspect` /
   `--list-available`). NEVER guess. NEVER install MCPs outside the
   gateway. NEVER use Fetch/WebFetch for catalog calls.
@@ -319,9 +380,9 @@ Output is a JSON array; each element has `name`, `packageName`,
   undefined `${VAR}`), or an `allowedMcpServers` / `deniedMcpServers`
   policy in managed settings (`managed-settings.json`) filtering the
   entry.
-- **Gateway: missing JFrog credentials** (loader can't authenticate
-  to the JFrog server) — run `jf c add <SERVER_ID>` or export
-  `JFROG_ACCESS_TOKEN` / `JF_ACCESS_TOKEN`, then relaunch.
+- **Gateway: missing JFrog credentials** (the gateway can't
+  authenticate to the JFrog server) — run `jf c add <SERVER_ID>` or
+  export `JFROG_ACCESS_TOKEN` / `JF_ACCESS_TOKEN`, then relaunch.
 - **OAuth MCP failing** — refresh token expired; re-run Step 5.
 - **401/403 with `${VAR}`** — env var unset/wrong; re-export in the
   launching shell and relaunch.
