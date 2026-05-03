@@ -4,7 +4,6 @@
 // https://www.apache.org/licenses/LICENSE-2.0
 
 import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
@@ -19,49 +18,19 @@ if (!root) {
   process.exit(0);
 }
 
+// Off by default. The gateway-management template is only injected when the
+// user explicitly opts in via JF_MCP_GATEWAY_FORCE_ENABLE=true. Anything
+// else - including unset - means the hook is a no-op, so users who don't
+// have the JFrog MCP Gateway licensed/installed never see gateway-specific
+// instructions.
 function shouldInject() {
-  const force = process.env.JF_MCP_GATEWAY_FORCE_ENABLE;
-  if (force === "true") {
-    debug("JF_MCP_GATEWAY_FORCE_ENABLE=true -> injecting (skip entitlement)");
-    return true;
-  }
-  if (force === "false") {
-    debug("JF_MCP_GATEWAY_FORCE_ENABLE=false -> skipping (skip entitlement)");
-    return false;
-  }
-
-  const registry =
-    process.env.JFROG_MCP_GATEWAY_REPO ||
-    "https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/";
-
-  debug(`spawning gateway --should-inject (registry=${registry})`);
-  const result = spawnSync(
-    "npx",
-    [
-      "--yes",
-      "--registry",
-      registry,
-      "@jfrog/mcp-gateway",
-      "--should-inject",
-    ],
-    {
-      encoding: "utf8",
-      timeout: 25_000,
-      shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-
-  if (result.error) {
-    debug(`spawn error: ${result.error.message} -> skipping`);
-    return false;
-  }
-  if (result.status === 0) {
-    debug("gateway: entitled -> injecting");
+  const enable = process.env.JF_MCP_GATEWAY_FORCE_ENABLE;
+  if (enable === "true") {
+    debug("JF_MCP_GATEWAY_FORCE_ENABLE=true -> injecting");
     return true;
   }
   debug(
-    `gateway exit ${result.status} (3 = not entitled, other = error) -> skipping`,
+    `JF_MCP_GATEWAY_FORCE_ENABLE=${enable ?? "<unset>"} -> skipping (default OFF)`,
   );
   return false;
 }

@@ -26,16 +26,15 @@ necessary:
    `~/.claude.json`), value after `--server`.
 3. Else read `~/.jfrog/jfrog-cli.conf.v6`
    (`%USERPROFILE%\.jfrog\jfrog-cli.conf.v6` on Windows) via a
-   terminal command (file-search skips hidden dirs). List the IDs and
-   ask the user.
+   terminal command (file-search skips hidden dirs). List the IDs
+   and ask the user. NEVER try multiple servers - pick one.
 
 **Project**
 
 1. From existing `mcpServers` entries, `_JF_MCP_LOADER_ARGS` →
    `project=` value.
 2. Else `JF_PROJECT` env var.
-3. Else ask. NEVER guess, NEVER use "default", NEVER try multiple
-   servers.
+3. Else ask. NEVER guess, NEVER use "default".
 
 **Target config file**
 
@@ -138,14 +137,21 @@ Notes:
 - For `Bearer`-prefixed headers, either include the prefix in the env
   var or hard-code it: `"Bearer ${TOKEN}"`.
 
-### Step 4a: Pre-approve and activate (mandatory)
+### Step 4a: Activate the entry (mandatory)
 
-First, try to pre-approve the entry so the per-server prompt is
-skipped: edit `<cwd>/.claude/settings.local.json` (create as `{}` if
-missing), remove `<spec.packageName>` from `disabledMcpjsonServers`,
-append it to `enabledMcpjsonServers`. If that write fails for any
-reason (permissions, missing dir), continue anyway — the user will
-just see the prompt on relaunch (step 3).
+Pre-approve the entry to skip the per-server prompt: edit
+`<cwd>/.claude/settings.local.json` (create as `{}` if missing),
+remove `<spec.packageName>` from `disabledMcpjsonServers`, append it
+to `enabledMcpjsonServers`. If the write fails (permissions, missing
+dir), continue — the user will just see the prompt on relaunch.
+
+`.claude/settings.local.json` is **per-user and gitignored** — fine
+for personal setup, but each teammate has to re-approve. If the user
+asks for team-wide pre-approval (committed to git), write the same
+`enabledMcpjsonServers` / `disabledMcpjsonServers` arrays to
+`<cwd>/.claude/settings.json` instead. Precedence is local >
+project > user, so a `settings.json` approval can still be
+overridden by an entry in `settings.local.json`.
 
 Then tell the user:
 
@@ -156,8 +162,13 @@ Then tell the user:
 3. On the FIRST launch, Claude Code prompts for workspace trust —
    accept. If pre-approval succeeded, the per-server prompt is
    skipped; otherwise approve "Approve MCP server `<name>`?".
-4. Verify with `/mcp` ("Project MCPs (...)", `✓ connected`) or
-   `claude mcp list`. NEVER call it done without `✓ connected`.
+4. Verify with `/mcp`. **Drill into the server entry** (arrow into
+   it, not just the top-level row) and read the `Capabilities:`
+   field. It MUST list at least one tool. The top-level `✓ connected`
+   label alone is NOT proof of success — Claude Code shows it green
+   whenever the gateway proxy started, even when 0 upstream tools
+   loaded. Empty `Capabilities:` = Failed; follow Troubleshooting
+   "`✓ connected` but 0 tools".
 
 Rejections persist in the same `enabledMcpjsonServers` /
 `disabledMcpjsonServers` arrays — `reset-project-choices` does NOT
@@ -165,8 +176,10 @@ clear them. Fix: move the entry to `enabledMcpjsonServers`, relaunch.
 
 ### Step 5: Authenticate OAuth MCPs (auto, after Step 4)
 
-Run ONLY when `--inspect` had a `remote` section with `type: "http"`
-AND the Step 4 entry has no static auth headers. Skip otherwise.
+Run ONLY for OAuth-style remote MCPs — i.e. `--inspect` showed a
+`remote` section with `type: "http"` AND Step 4 wrote no static auth
+header into `env`. Skip for local MCPs and for remote MCPs whose
+auth comes from a static token in `env`.
 
 `--login` opens the browser, runs OAuth, caches tokens in
 `~/.jfrog/jfrogmcp.conf.json`. Warn the user "I'm going to open your
@@ -184,9 +197,9 @@ npx --yes \
 
 Outcomes:
 
-- **Exits 0** — OAuth completed; tokens cached. Server is ready.
-- **`expected 401, got 200`** — MCP is anonymous, no auth needed;
-  ignore the error.
+- **Exit 0** — OAuth completed; tokens cached; server ready.
+- **`expected 401, got 200`** — MCP is anonymous (no auth needed);
+  ignore.
 - **Any other error** — paste it to the user verbatim and stop.
 
 ## Removing an MCP
@@ -195,17 +208,22 @@ Outcomes:
    (`.mcp.json` or top-level `~/.claude.json`).
 2. If OAuth was used (Step 5), also remove its entry from
    `~/.jfrog/jfrogmcp.conf.json`.
-3. Tell the user to relaunch Claude Code (read at session start only).
+3. Tell the user to relaunch Claude Code so the removed entry stops
+   loading (`mcpServers` is read at session start only).
 
 ## Listing MCPs
 
 ### Installed MCPs
 
-`claude mcp list` shows connection status. For JFrog metadata read
-`mcpServers` from `.mcp.json` and top-level `~/.claude.json` and show
-display name, package (`mcp=` in `_JF_MCP_LOADER_ARGS`), server ID
-(`--server`), scope. Missing rows = pending approval or filtered by
-an `allowedMcpServers` policy.
+1. Run `claude mcp list` for connection status (one row per server).
+2. For JFrog metadata, read `mcpServers` from both `.mcp.json` (project
+   scope) and top-level `~/.claude.json` (user scope), and for each
+   entry show: display name, package (`mcp=` in
+   `_JF_MCP_LOADER_ARGS`), server ID (value after `--server`), scope.
+3. If a configured entry does not appear in `claude mcp list`, it is
+   either pending approval (see Step 4a) or filtered by an
+   `allowedMcpServers` policy in `.claude/settings.json` /
+   managed settings.
 
 ### Available MCPs (JFrog AI Catalog)
 
@@ -251,16 +269,48 @@ Output is a JSON array; each element has `name`, `packageName`,
 
 ## Troubleshooting
 
-- **`✓ Connected` but 0 tools** — gateway started but the upstream
-  MCP did not. Treat as Failed: re-run Step 5 for OAuth MCPs, check
-  the secret env var for static-token MCPs, read gateway stderr in
-  Claude Code's logs for local MCPs.
+- **`✓ connected` but 0 tools (empty `Capabilities:` when you drill
+  into `/mcp`)** — gateway proxy started, upstream MCP did not.
+  Top-level `✓ connected` is misleading here. NEVER report success.
+  Relaunch with `claude --debug` and read the gateway stderr in the
+  logs panel; diagnose by MCP type:
+  - **OAuth (remote)** — re-run Step 5 (`--login`); refresh token
+    likely expired.
+  - **Static-token (remote)** — confirm every `${VAR}` in `env` is
+    exported in the launching shell and the token is still valid.
+  - **Local (stdio)** — check that the bundled binary actually
+    launched (gateway stderr will show the spawn error).
 - **`.mcp.json` server missing from `/mcp`** — rejected. See Step 4a.
+- **MCP still appears as approved (or won't go away) after editing
+  `.mcp.json`** — approval state lives in plain JSON arrays read at
+  session start; nothing is cached, so `npm cache clean` is
+  unrelated. Check, in precedence order:
+  1. `<cwd>/.claude/settings.local.json` — per-user, gitignored.
+     Where Step 4a writes by default.
+  2. `<cwd>/.claude/settings.json` — team-shared, committed to git.
+  3. `~/.claude/settings.json` — user-global, applies to every
+     repo.
+  4. `~/.claude.json` → `projects["<absolute cwd>"]
+     .enabledMcpjsonServers` / `disabledMcpjsonServers` — separate
+     runtime store Claude Code writes when the user clicks
+     *approve* / *reject* on the interactive prompt. NOT cleared by
+     `reset-project-choices`.
+  5. Managed `managed-settings.json` (`/Library/Application
+     Support/ClaudeCode/` on macOS, `/etc/claude-code/` on Linux,
+     `%ProgramData%\ClaudeCode\` on Windows) — can't be overridden.
+
+  Also check `enableAllProjectMcpServers: true` in any of (1)–(3) —
+  that auto-approves every entry in `.mcp.json`. Membership in any
+  `enabledMcpjsonServers` array is enough to skip the prompt, so to
+  truly revoke, remove the entry from every file that lists it (and
+  optionally add to `disabledMcpjsonServers` to explicitly block),
+  then `/exit` and relaunch.
 - **Missing from `claude mcp list`** — JSON parse failure (often an
   undefined `${VAR}`), or a server-side `allowedMcpServers` policy in
   `.claude/settings.json` / managed settings filtering the entry.
-- **Loader: missing credentials** — `jf c add` for `<SERVER_ID>` or
-  export `JFROG_ACCESS_TOKEN` / `JF_ACCESS_TOKEN`, then relaunch.
+- **Gateway: missing JFrog credentials** (loader can't authenticate
+  to the JFrog server) — run `jf c add <SERVER_ID>` or export
+  `JFROG_ACCESS_TOKEN` / `JF_ACCESS_TOKEN`, then relaunch.
 - **OAuth MCP failing** — refresh token expired; re-run Step 5.
 - **401/403 with `${VAR}`** — env var unset/wrong; re-export in the
   launching shell and relaunch.
