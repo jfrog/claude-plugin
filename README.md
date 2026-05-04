@@ -12,6 +12,7 @@ This repository **is** the plugin: manifest at [`.claude-plugin/plugin.json`](.c
 | --- | --- | --- |
 | **Manifest** | [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) | Plugin id `jfrog`, version, metadata. |
 | **Skills** | [`skills/`](skills/) | `skills/<name>/SKILL.md`, invoked as `/jfrog:<name>` when the plugin is loaded. |
+| **MCP Gateway hook** | [`hooks/hooks.json`](hooks/hooks.json), [`scripts/inject-instructions.mjs`](scripts/inject-instructions.mjs), [`templates/jfrog-mcp-management.md`](templates/jfrog-mcp-management.md) | A `SessionStart` hook that injects MCP-management instructions into Claude's context so MCP servers can only be added/removed/listed through the **JFrog MCP Gateway** (`@jfrog/mcp-gateway`). |
 
 Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills); the pinned **release and commit** are in [`skills/VENDOR.md`](skills/VENDOR.md).
 
