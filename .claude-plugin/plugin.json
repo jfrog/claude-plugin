@@ -1,7 +1,7 @@
 {
   "name": "jfrog",
   "description": "Use the JFrog Platform from Claude Code: Artifactory repos and artifacts, security findings and exposures, Catalog package safety and downloads, workflows across the SDLC, and platform administration.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "JFrog Ltd.",
     "email": "devrel@jfrog.com",
