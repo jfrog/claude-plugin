@@ -169,7 +169,7 @@ If you continue to experience issues:
 
 1. Reproduce with `JF_AGENT_GUARD_DEBUG=true` and capture the stderr output from the hook.
 2. Note any HTTP status codes returned by the JFrog Platform settings endpoint.
-3. Open a [GitHub issue](https://github.com/jfrog/claude-plugin/issues) or contact JFrog support with the collected information.
+3. Open a [GitHub issue](https://github.com/jfrog/claude-plugin/issues) or contact JFrog support at <devrel@jfrog.com> with the collected information.
 
 ---
 
