@@ -161,7 +161,13 @@ Permissions are project-specific. Make sure the MCP is allowed for the specific 
 
 ### Uninstall the plugin
 
-Run `/plugin uninstall jfrog@jfrog` inside Claude Code. The `SessionStart` hook stops running once the plugin is removed.
+Inside Claude Code, run:
+
+```
+/plugin uninstall jfrog@jfrog
+```
+
+The `SessionStart` hook stops running once the plugin is removed.
 
 ### Getting help
 
