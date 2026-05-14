@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs\"",
             "timeout": 7
           }
         ]
