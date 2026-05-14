@@ -108,40 +108,7 @@ When an MCP server requires a sensitive configuration, the agent cannot set the 
 
 ## Troubleshooting
 
-### The hook doesn't inject MCP-management instructions
-
-The `SessionStart` hook silently exits unless the gateway is enabled. Check, in order:
-
-1. `JFROG_URL` and `JFROG_ACCESS_TOKEN` are set in the environment Claude is launched from.
-2. The `mcp_gateway_plugin_enabled` account setting is enabled in your JFrog Platform.
-3. To bypass the settings check for local testing, launch Claude with `JF_MCP_GATEWAY_FORCE_ENABLE=true`.
-4. To see why the hook decided to skip, launch with `JF_AGENT_GUARD_DEBUG=true claude` — debug logs are written to stderr with the `[jfrog-agent-guard]` prefix.
-
-### MCP failed to start
-
-The plugin does not install runtimes. Ensure you have Docker, Python, or Node installed locally as required by the specific MCP server, and that any required environment variables are configured.
-
-### Tools are not appearing in my agent chat
-
-Permissions are project-specific. Make sure the MCP is allowed for the specific project configured in your environment (`JF_PROJECT`) and that any tool policies are not blocking the tools you expect.
-
-### Uninstall the plugin
-
-Inside Claude Code, run:
-
-```
-/plugin uninstall jfrog@jfrog
-```
-
-The `SessionStart` hook stops running once the plugin is removed.
-
-### Getting help
-
-If you continue to experience issues:
-
-1. Reproduce with `JF_AGENT_GUARD_DEBUG=true` and capture the stderr output from the hook.
-2. Note any HTTP status codes returned by the JFrog Platform settings endpoint.
-3. Open a [GitHub issue](https://github.com/jfrog/claude-plugin/issues) or contact JFrog support at <devrel@jfrog.com> with the collected information.
+See the [JFrog MCP Registry troubleshooting guide](https://docs.jfrog.com/ai-ml/docs/mcp-registry-troubleshooting).
 
 ---
 
