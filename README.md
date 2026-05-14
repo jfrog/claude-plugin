@@ -20,11 +20,11 @@ Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-ski
 
 Before installing, make sure you have:
 
-- **JFrog Platform access** — An active account with the AI Catalog enabled.
+- **JFrog Platform access** — Your JFrog subscription must include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog project** — At least one MCP server allowed for your project.
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
-- **Node.js** (≥ 18) — with `npx` on your `PATH` 
+- **Node.js** (≥ 14) — with `npx` on your `PATH` 
 - **JFrog CLI** (≥ 2.x, optional) — Recommended for `jf config add` authentication (see [Authentication](#authentication)).
 - **JFrog credentials** — Provided in one of two ways (see [Authentication](#authentication)):
 
