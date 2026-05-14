@@ -12,7 +12,6 @@ This repository **is** the plugin: manifest at [`.claude-plugin/plugin.json`](.c
 | --- | --- | --- |
 | **Manifest** | [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) | Plugin id `jfrog`, version, metadata. |
 | **Skills** | [`skills/`](skills/) | `skills/<name>/SKILL.md`, invoked as `/jfrog:<name>` when the plugin is loaded. |
-| **MCP Gateway hook** | [`hooks/hooks.json`](hooks/hooks.json), [`scripts/inject-instructions.mjs`](scripts/inject-instructions.mjs), [`templates/jfrog-mcp-management.md`](templates/jfrog-mcp-management.md) | A `SessionStart` hook that injects MCP-management instructions into Claude's context so MCP servers can only be added/removed/listed through the **JFrog MCP Gateway** (`@jfrog/mcp-gateway`). |
 
 Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills); the pinned **release and commit** are in [`skills/VENDOR.md`](skills/VENDOR.md).
 
@@ -135,8 +134,6 @@ After authentication, open a workspace in Claude Code. The plugin's `SessionStar
 | "Remove the Slack MCP server."                        | Uninstalls the server and its stored credentials.                                             |
 | "Switch my project to `backend-team`."                | Re-syncs approved servers and policies for the new project.                                   |
 | "Which JFrog project am I working in?"                | Shows the active project and the others you can access.                                       |
-
-**How secrets are handled.** When a server's metadata marks a value as `isSecret`, the agent will not set it directly — instead it returns a CLI command for you to run locally, so tokens and connection strings never appear in chat history.
 
 ---
 
