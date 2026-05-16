@@ -10,8 +10,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | --- | --- | --- |
 | **Skill** | JFrog Platform| Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package safety & download| Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
-| **Hook** | Agent Guard| Detects when the JFrog Agent Guard is enabled for your account and injects MCP-management instructions so all MCP servers are installed exclusively through the **JFrog MCP Gateway**. |
-| **MCP** | Gateway-managed lifecycle | Discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project. Authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
+| **Hook** | Agent Guard | Detects when the JFrog Agent Guard is enabled for your account and injects MCP-management instructions. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
 
@@ -19,7 +18,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 Before installing, make sure you have:
 
-- **JFrog Platform access** — Required for the MCP features only (Agent Guard hook + Gateway-managed MCPs): your JFrog subscription must include the AI Catalog entitlement. The skills work without it. Contact your JFrog account team if you're unsure whether it's enabled.
+- **JFrog Platform access** — Required for the Agent Guard hook (MCP management) only: your JFrog subscription must include the AI Catalog entitlement. The skills work without it. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog project** — At least one MCP server allowed for your project.
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
@@ -107,7 +106,7 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Is this Maven package approved for use?"               | Checks curation entitlement and policy for the requested package.                                         |
 | "Download `requests` via JFrog."                        | Resolves the package through an Artifactory remote cache or curation-aware package manager.               |
 
-### MCP server management (Agent Guard hook + Gateway)
+### MCP server management (Agent Guard hook)
 
 | Ask the agent…                                          | What happens                                                                                                                                |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
