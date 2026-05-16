@@ -1,18 +1,17 @@
-# JFrog MCP Integration for Claude Code
+# JFrog Plugin for Claude Code
 
-![JFrog](assets/logo.svg)
+JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices — with all MCP servers installed exclusively through the **JFrog Agent Guard**.
 
-JFrog integration for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices — with all MCP servers installed exclusively through the **JFrog Agent Guard**.
+## Features
 
+The JFrog plugin provides the following capabilities, grouped by component:
 
-## What's included
-
-| Component | Path | Description |
+| Component | Feature | Description |
 | --- | --- | --- |
-| **Manifest** | [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) | Plugin id `jfrog`, version, metadata. |
-| **Skills** | [`skills/`](skills/) | `skills/<name>/SKILL.md`, invoked as `/jfrog:<name>` when the plugin is loaded. |
-
-Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills); the pinned **release and commit** are in [`skills/VENDOR.md`](skills/VENDOR.md).
+| **Skill** | JFrog Platform| Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
+| **Skill** | Package safety & download| Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
+| **Hook** | Agent Guard| Detects when the JFrog Agent Guard is enabled for your account and injects MCP-management instructions so all MCP servers are installed exclusively through the **JFrog MCP Gateway**. |
+| **MCP** | Gateway-managed lifecycle | Discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project. Authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
 
@@ -20,7 +19,7 @@ Skills are vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-ski
 
 Before installing, make sure you have:
 
-- **JFrog Platform access** — Your JFrog subscription must include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
+- **JFrog Platform access** — Required for the MCP features only (Agent Guard hook + Gateway-managed MCPs): your JFrog subscription must include the AI Catalog entitlement. The skills work without it. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog project** — At least one MCP server allowed for your project.
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
@@ -87,7 +86,28 @@ Use this if you are not using the JFrog CLI. Set the following variables in your
 
 ## Usage
 
-### Discover, inspect, and install MCPs
+Once configured, interact with the JFrog plugin through natural language. Examples are grouped by capability.
+
+### JFrog Platform skill
+
+| Ask the agent…                                          | What happens                                                                                              |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| "List my Artifactory repositories."                     | Returns repositories via the JFrog CLI.                                                                   |
+| "Upload this build to Artifactory."                     | Publishes build artifacts and metadata.                                                                   |
+| "Run a security audit on this project."                 | Runs an Xray / Advanced Security audit and summarizes findings.                                           |
+| "Show me details on CVE-2021-23337."                    | Looks up CVE details in JFrog Advanced Security.                                                          |
+| "Create a scoped access token for CI."                  | Creates an access token with the requested scope.                                                         |
+| "Promote this release bundle to production."            | Uses Lifecycle / Distribution APIs to promote the bundle.                                                 |
+
+### Package safety & download skill
+
+| Ask the agent…                                          | What happens                                                                                              |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| "Is `lodash@4.17.21` safe to install?"                  | Checks JFrog Public Catalog signals and curation policy for the package.                                  |
+| "Is this Maven package approved for use?"               | Checks curation entitlement and policy for the requested package.                                         |
+| "Download `requests` via JFrog."                        | Resolves the package through an Artifactory remote cache or curation-aware package manager.               |
+
+### MCP server management (Agent Guard hook + Gateway)
 
 | Ask the agent…                                          | What happens                                                                                                                                |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
