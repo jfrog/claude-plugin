@@ -38,10 +38,6 @@ Inside Claude Code, run:
 claude plugin install jfrog
 ```
 
-### Verify
-
-Run `/plugin` inside Claude and confirm the **Installed** tab shows the JFrog plugin at **v0.1.2 or higher**.
-
 ### Local development
 
 From a clone of this repository (repository root **is** the plugin root):
