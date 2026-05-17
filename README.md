@@ -68,8 +68,6 @@ If you already have the JFrog CLI installed and configured, the plugin uses your
 
 ### Option B — Persistent environment variables
 
-Use this if you are not using the JFrog CLI. Set the following variables in your shell profile (macOS/Linux) or user environment (Windows), then fully restart VS Code:
-
 | Variable             | Description                                                |
 | -------------------- | ---------------------------------------------------------- |
 | `JFROG_PLATFORM_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
