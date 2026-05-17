@@ -104,7 +104,7 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Is this Maven package approved for use?"               | Checks curation entitlement and policy for the requested package.                                         |
 | "Download `requests` via JFrog."                        | Resolves the package through an Artifactory remote cache or curation-aware package manager.               |
 
-### MCP server management (Agent Guard hook)
+### MCP server management (Agent Guard)
 
 | Ask the agent…                                          | What happens                                                                                                                                |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
