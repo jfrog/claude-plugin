@@ -6,11 +6,11 @@ JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact
 
 The JFrog plugin provides the following capabilities, grouped by component:
 
-| Component | Feature | Description |
-| --- | --- | --- |
-| **Skill** | JFrog Platform| Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
-| **Skill** | Package safety & download| Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
-| **Hook** | Agent Guard | Detects when the JFrog Agent Guard is enabled for your account and injects MCP-management instructions. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
+| Component | Feature | Description                                                                                                                                                                                                                                                                   |
+| --- | --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Skill** | JFrog Platform| Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries.          |
+| **Skill** | Package safety & download| Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers.                                                                                                |
+| **Hook** | Agent Guard | Claude manage MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
 
@@ -18,8 +18,8 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 Before installing, make sure you have:
 
-- **JFrog Platform access** — Required for the Agent Guard hook (MCP management) only: your JFrog subscription must include the AI Catalog entitlement. The skills work without it. Contact your JFrog account team if you're unsure whether it's enabled.
-- **JFrog project** — At least one MCP server allowed for your project.
+- **JFrog Platform access** — Your JFrog subscription must include the AI Catalog entitlement (required for the Agent Guard feature only). Contact your JFrog account team if you're unsure whether it's enabled.
+- **JFrog project** — At least one MCP server allowed for your project (required for the Agent Guard feature only).
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
 - **Node.js** (≥ 14) — with `npx` on your `PATH` 
@@ -49,8 +49,6 @@ From a clone of this repository (repository root **is** the plugin root):
 ```bash
 claude --plugin-dir /path/to/claude-plugin
 ```
-
-After Claude Code starts, use `/help` to confirm skills under the `jfrog` namespace (for example `/jfrog:<skill-name>`). Run `/reload-plugins` after you change plugin files.
 
 ---
 
