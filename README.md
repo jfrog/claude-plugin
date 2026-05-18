@@ -23,7 +23,7 @@ Before installing, make sure you have:
 - **Node.js** (≥ 14) — with `npx` on your `PATH`.
 - **JFrog CLI** (≥ 2.x, optional) — Recommended for `jf config add` authentication (see [Authentication](#authentication)).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
-- **JFrog project** (optional) — If you want to use the Agent Guard feature, at least one MCP server must be allowed for your project.
+- **JFrog project** (optional) — If you want to use the Agent Guard feature.
 
 ---
 
@@ -49,27 +49,23 @@ claude --plugin-dir /path/to/claude-plugin
 
 ## Authentication
 
-The plugin reads JFrog credentials from environment variables or the JFrog CLI configuration. Pick **one** of the following.
-
-
-### Option A — Persistent environment variables
+### 1. Set persistent environment variables
 
 | Variable | Description |
 | --- | --- |
 | `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
 | `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
+### 2. Configure the JFrog CLI
 
-### Option B — JFrog CLI (`jf config add`)
-
-**First-time setup only** (if you have never configured the JFrog CLI on this machine):
+If you have never configured the JFrog CLI on this machine:
 
 1. Open your terminal.
 2. Run:
    ```bash
    jf config add
    ```
-3. Follow the interactive prompts to enter your JFrog Platform URL and access token.
+3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
 
 ---
 
