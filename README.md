@@ -1,16 +1,16 @@
 # JFrog Plugin for Claude Code
 
-JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices with all MCP servers installed.
+JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices, and Agent Guard.
 
 ## Features
 
 The JFrog plugin provides the following capabilities, grouped by component:
 
-| Component | Feature | Description |
-| --- | --- | --- |
-| **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
-| **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
-| **Hook** | Agent Guard | Claude manage MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
+| Component | Feature | Description                                                                                                                                                                                                                                                                    |
+| --- | --- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries.           |
+| **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers.                                                                                                 |
+| **Hook** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
 
@@ -19,10 +19,10 @@ The JFrog plugin provides the following capabilities, grouped by component:
 Before installing, make sure you have:
 
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
-- **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
+- **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
 - **Node.js** (≥ 14) — with `npx` on your `PATH`.
 - **JFrog CLI** (≥ 2.x, optional) — Recommended for `jf config add` authentication (see [Authentication](#authentication)).
-- **JFrog Platform access** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
+- **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog project** (optional) — If you want to use the Agent Guard feature, at least one MCP server must be allowed for your project.
 
 ---
@@ -34,7 +34,7 @@ Before installing, make sure you have:
 Inside Claude Code, run:
 
 ```
-claude plugin install jfrog
+/plugin install jfrog
 ```
 
 ### Local development
@@ -51,9 +51,16 @@ claude --plugin-dir /path/to/claude-plugin
 
 The plugin reads JFrog credentials from environment variables or the JFrog CLI configuration. Pick **one** of the following.
 
-### Option A — JFrog CLI (`jf config add`)
 
-If you already have the JFrog CLI installed and configured, the plugin uses your existing authentication — no further setup is required.
+### Option A — Persistent environment variables
+
+| Variable | Description |
+| --- | --- |
+| `JFROG_PLATFORM_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
+| `JFROG_ACCESS_TOKEN` | Your JFrog access token |
+
+
+### Option B — JFrog CLI (`jf config add`)
 
 **First-time setup only** (if you have never configured the JFrog CLI on this machine):
 
@@ -64,13 +71,6 @@ If you already have the JFrog CLI installed and configured, the plugin uses your
    ```
 3. Follow the interactive prompts to enter your JFrog Platform URL and access token.
 4. Restart your IDE / terminal to apply the changes.
-
-### Option B — Persistent environment variables
-
-| Variable | Description |
-| --- | --- |
-| `JFROG_PLATFORM_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
-| `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
 ---
 
