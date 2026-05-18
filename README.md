@@ -1,15 +1,15 @@
 # JFrog Plugin for Claude Code
 
-JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices — with all MCP servers installed exclusively through the **JFrog Agent Guard**.
+JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices with all MCP servers installed.
 
 ## Features
 
 The JFrog plugin provides the following capabilities, grouped by component:
 
-| Component | Feature | Description                                                                                                                                                                                                                                                                   |
-| --- | --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Skill** | JFrog Platform| Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries.          |
-| **Skill** | Package safety & download| Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers.                                                                                                |
+| Component | Feature | Description |
+| --- | --- | --- |
+| **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
+| **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook** | Agent Guard | Claude manage MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
@@ -18,13 +18,12 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 Before installing, make sure you have:
 
-- **JFrog Platform access** — Your JFrog subscription must include the AI Catalog entitlement (required for the Agent Guard feature only). Contact your JFrog account team if you're unsure whether it's enabled.
-- **JFrog project** — At least one MCP server allowed for your project (required for the Agent Guard feature only).
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI or the official IDE extension installed.
-- **Node.js** (≥ 14) — with `npx` on your `PATH` 
+- **Node.js** (≥ 14) — with `npx` on your `PATH`.
 - **JFrog CLI** (≥ 2.x, optional) — Recommended for `jf config add` authentication (see [Authentication](#authentication)).
-- **JFrog credentials** — Provided in one of two ways (see [Authentication](#authentication)):
+- **JFrog Platform access** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
+- **JFrog project** (optional) — If you want to use the Agent Guard feature, at least one MCP server must be allowed for your project.
 
 ---
 
@@ -68,10 +67,10 @@ If you already have the JFrog CLI installed and configured, the plugin uses your
 
 ### Option B — Persistent environment variables
 
-| Variable             | Description                                                |
-| -------------------- | ---------------------------------------------------------- |
+| Variable | Description |
+| --- | --- |
 | `JFROG_PLATFORM_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
-| `JFROG_ACCESS_TOKEN` | Your JFrog access token                                    |
+| `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
 ---
 
@@ -81,35 +80,35 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 
 ### JFrog Platform skill
 
-| Ask the agent…                                          | What happens                                                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| "List my Artifactory repositories."                     | Returns repositories via the JFrog CLI.                                                                   |
-| "Upload this build to Artifactory."                     | Publishes build artifacts and metadata.                                                                   |
-| "Run a security audit on this project."                 | Runs an Xray / Advanced Security audit and summarizes findings.                                           |
-| "Show me details on CVE-2021-23337."                    | Looks up CVE details in JFrog Advanced Security.                                                          |
-| "Create a scoped access token for CI."                  | Creates an access token with the requested scope.                                                         |
-| "Promote this release bundle to production."            | Uses Lifecycle / Distribution APIs to promote the bundle.                                                 |
+| Ask the agent… | What happens |
+| --- | --- |
+| "List my Artifactory repositories." | Returns repositories via the JFrog CLI. |
+| "Upload this build to Artifactory." | Publishes build artifacts and metadata. |
+| "Run a security audit on this project." | Runs an Xray / Advanced Security audit and summarizes findings. |
+| "Show me details on CVE-2021-23337." | Looks up CVE details in JFrog Advanced Security. |
+| "Create a scoped access token for CI." | Creates an access token with the requested scope. |
+| "Promote this release bundle to production." | Uses Lifecycle / Distribution APIs to promote the bundle. |
 
 ### Package safety & download skill
 
-| Ask the agent…                                          | What happens                                                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| "Is `lodash@4.17.21` safe to install?"                  | Checks JFrog Public Catalog signals and curation policy for the package.                                  |
-| "Is this Maven package approved for use?"               | Checks curation entitlement and policy for the requested package.                                         |
-| "Download `requests` via JFrog."                        | Resolves the package through an Artifactory remote cache or curation-aware package manager.               |
+| Ask the agent… | What happens |
+| --- | --- |
+| "Is `lodash@4.17.21` safe to install?" | Checks JFrog Public Catalog signals and curation policy for the package. |
+| "Is this Maven package approved for use?" | Checks curation entitlement and policy for the requested package. |
+| "Download `requests` via JFrog." | Resolves the package through an Artifactory remote cache or curation-aware package manager. |
 
 ### MCP server management (Agent Guard)
 
-| Ask the agent…                                          | What happens                                                                                                                                |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| "Which MCP servers can I install?"                      | Returns all MCP servers approved for your current project that you can install.                                                             |
-| "What MCP servers do I already have?"                   | Returns only the MCP servers already installed on your machine.                                                                             |
-| "Show me the details for the filesystem MCP server."    | Returns detailed metadata, required configuration (environment variables, runtime arguments), and active tool policies for a given server. |
-| "Add the GitHub MCP server."                            | Installs an approved MCP server and syncs its tool policies locally. Secrets are requested via a CLI command — never in chat.               |
-| "Update the environment variables for the Slack MCP."   | Replaces the configuration for an already-installed server without removing and reinstalling it.                                            |
-| "Remove the Slack MCP server."                          | Removes the server and its stored credentials from your local setup. Changes apply immediately.                                             |
-| "Log in to the remote Jira MCP server using OAuth."     | Authenticates with a remote HTTP-based MCP server (OAuth, API key, or bearer token).                                                        |
-| "Log out of the Jira MCP server."                       | Removes stored authentication credentials for a server.                                                                                     |
+| Ask the agent… | What happens |
+| --- | --- |
+| "Which MCP servers can I install?" | Returns all MCP servers approved for your current project that you can install. |
+| "What MCP servers do I already have?" | Returns only the MCP servers already installed on your machine. |
+| "Show me the details for the filesystem MCP server." | Returns detailed metadata, required configuration (environment variables, runtime arguments), and active tool policies for a given server. |
+| "Add the GitHub MCP server." | Installs an approved MCP server and syncs its tool policies locally. Secrets are requested via a CLI command — never in chat. |
+| "Update the environment variables for the Slack MCP." | Replaces the configuration for an already-installed server without removing and reinstalling it. |
+| "Remove the Slack MCP server." | Removes the server and its stored credentials from your local setup. Changes apply immediately. |
+| "Log in to the remote Jira MCP server using OAuth." | Authenticates with a remote HTTP-based MCP server (OAuth, API key, or bearer token). |
+| "Log out of the Jira MCP server." | Removes stored authentication credentials for a server. |
 
 ### How secrets are handled
 
