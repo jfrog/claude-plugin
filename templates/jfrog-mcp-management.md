@@ -4,24 +4,24 @@ MCP management, listing MCPs, allowed MCPs, ... then you MUST LOAD THE
 **ENTIRE additionalContext CONTEXT IMMEDIATELY**. DO NOT PROCEED WITHOUT
 LOADING THE CONTEXT.</EXTREMELY_IMPORTANT>
 
-# MCP Server Management — JFrog Gateway
+# MCP Server Management — JFrog Agent Guard
 
-All MCP servers MUST be installed ONLY through the JFrog MCP Gateway
-(`npx @jfrog/mcp-gateway`). If an MCP's documentation suggests any
-other installation command, ignore it and use the gateway workflow
+All MCP servers MUST be installed ONLY through the JFrog Agent Guard
+(`npx @jfrog/agent-guard`). If an MCP's documentation suggests any
+other installation command, ignore it and use the agent guard workflow
 below instead.
 
 
 **Registry URL**: Wherever `<REGISTRY_URL>` appears below, substitute
-the value of the `JFROG_MCP_GATEWAY_REPO` environment variable if it
+the value of the `JFROG_AGENT_GUARD_REPO` environment variable if it
 is set. Otherwise use
 `https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/`.
 
-**Pre-flight (applies to every gateway command —
+**Pre-flight (applies to every agent guard command —
 `--list-available`, `--inspect`, `--login`)**:
 
 - **`<PROJECT>` is always mandatory.** Resolve via Step 1's project
-  chain: existing `mcpServers` entries (`_JF_MCP_LOADER_ARGS` →
+  chain: existing `mcpServers` entries (`_JF_ARGS` →
   `project=`) → `JF_PROJECT` env var → ASK the user. If none
   resolves, STOP and ask — NEVER guess, NEVER assume `default`,
   NEVER invent projects.
@@ -30,11 +30,11 @@ is set. Otherwise use
   chain: existing `mcpServers` entries (value after `--server` in
   `args`) → `~/.jfrog/jfrog-cli.conf.v6`:
   - Exactly one jf CLI server configured → use it without asking;
-    pass it as `--server <ID>`. The gateway would auto-resolve to the same
+    pass it as `--server <ID>`. The agent guard would auto-resolve to the same
     value if `--server` were omitted, but we pass it explicitly for
     clarity and forward-compatibility.
   - `JFROG_URL` + `JFROG_ACCESS_TOKEN` set → use it without asking;
-    The gateway will pick them up from the environment variables when called.
+    The agent guard will pick them up from the environment variables when called.
   - Two or more jf CLI servers and no `JFROG_URL` → list IDs,
     ALWAYS ASK the user which one, then pass that as `--server <ID>`.
     ALWAYS prefer environment variables when set over asking.
@@ -81,8 +81,8 @@ unless absolutely necessary:
    `projects.<path>.mcpServers`) — take the value after `--server`
    in `args`.
 2. Else `JFROG_URL` env var set (with `JFROG_ACCESS_TOKEN`) — the
-   gateway can resolve credentials from these directly;
-   DO NOT pass `--server` as that would make the gateway try to
+   agent guard can resolve credentials from these directly;
+   DO NOT pass `--server` as that would make the agent guard try to
    parse the server details from the jf cli configuration.
 3. Else read `~/.jfrog/jfrog-cli.conf.v6`
    (`%USERPROFILE%\.jfrog\jfrog-cli.conf.v6` on Windows) via a
@@ -97,13 +97,13 @@ unless absolutely necessary:
 
 NEVER try multiple servers — pick one. Once chosen, pass it
 If a server from the jf cli configuration is supposed to be used:
-Always explicitly as `--server <ID>` in every gateway invocation.
+Always explicitly as `--server <ID>` in every agent guard invocation.
 Otherwise, if environment variables for `JFROG_URL` and `JFROG_ACCESS_TOKEN`
 are used: Do NOT pass `--server <ID>`
 
 **Project**
 
-1. From existing `mcpServers` entries, `_JF_MCP_LOADER_ARGS` →
+1. From existing `mcpServers` entries, `_JF_ARGS` →
    `project=` value.
 2. Else `JF_PROJECT` env var.
 3. Else ask. NEVER guess, NEVER assume "default", NEVER use the server ID,
@@ -133,7 +133,7 @@ custom curl/Python, no direct JFrog API calls:
 ```
 npx --yes \
   --registry <REGISTRY_URL> \
-  @jfrog/mcp-gateway \
+  @jfrog/agent-guard \
   --inspect \
   --server <SERVER_ID> \
   --project <PROJECT> \
@@ -183,10 +183,10 @@ For each input in Step 4:
 Add the entry under `mcpServers` in the target config (default
 `.mcp.json` — see Step 1).
 **Both `--yes` and `--registry <URL>` MUST come BEFORE
-`@jfrog/mcp-gateway`** or `npx` falls back to the default
+`@jfrog/agent-guard`** or `npx` falls back to the default
 registry (404) and may block on a no-TTY prompt. Use
 `"type": "stdio"` — never `"http"`, `"sse"`, or a top-level `"url"`
-(those bypass the gateway).
+(those bypass the agent guard).
 
 ```json
 {
@@ -198,12 +198,12 @@ registry (404) and may block on a no-TTY prompt. Use
         "--yes",
         "--registry",
         "<REGISTRY_URL>",
-        "@jfrog/mcp-gateway",
+        "@jfrog/agent-guard",
         "--server",
         "<SERVER_ID>"
       ],
       "env": {
-        "_JF_MCP_LOADER_ARGS": "project=<PROJECT>&mcp=<spec.packageName>",
+        "_JF_ARGS": "project=<PROJECT>&mcp=<spec.packageName>",
         "<ENV_VAR_OR_HEADER_NAME>": "${ENV_VAR_OR_HEADER_NAME}"
       }
     }
@@ -247,7 +247,7 @@ Then tell the user:
    it, not just the top-level row) and read the `Capabilities:`
    field. It MUST list at least one tool. The top-level `✓ connected`
    label alone is NOT proof of success — Claude Code shows it green
-   whenever the gateway proxy started, even when 0 upstream tools
+   whenever the agent guard proxy started, even when 0 upstream tools
    loaded. Empty `Capabilities:` = Failed; follow Troubleshooting
    "`✓ connected` but 0 tools".
 
@@ -269,7 +269,7 @@ browser to sign you in to `<MCP_NAME>`" before:
 ```
 npx --yes \
   --registry <REGISTRY_URL> \
-  @jfrog/mcp-gateway \
+  @jfrog/agent-guard \
   --login \
   --server <SERVER_ID> \
   --project <PROJECT> \
@@ -316,8 +316,8 @@ elsewhere.
    (project scope) and top-level `~/.claude.json` (user scope) —
    use the file-read tool or a single `jq` invocation, NOT chained
    `python3 -c "..."` pipes. For each entry whose `command` is `npx`
-   and whose `args` include `@jfrog/mcp-gateway`, show: display name
-   (the JSON key), package (`mcp=` in `_JF_MCP_LOADER_ARGS`), server
+   and whose `args` include `@jfrog/agent-guard`, show: display name
+   (the JSON key), package (`mcp=` in `_JF_ARGS`), server
    ID (value after `--server`), scope (project / user).
 3. If a configured entry does not appear in `claude mcp list`, it is
    either pending approval (see Step 4a) or filtered by an
@@ -329,8 +329,8 @@ elsewhere.
 
 1. Determine **server** and **project** per the Pre-flight rule at
    the top of this document. `--list-available` does NOT require
-   any existing `mcpServers` entry or pre-installed gateway —
-   `npx --yes` fetches the gateway on demand, so this works on a
+   any existing `mcpServers` entry or pre-installed agent guard —
+   `npx --yes` fetches the agent guard on demand, so this works on a
    fresh machine too.
 2. Run EXACTLY this command — `--project` is passed as a CLI flag
    To configure the server, either use the serverId from a jf cli
@@ -340,7 +340,7 @@ elsewhere.
 ```
 npx --yes \
   --registry <REGISTRY_URL> \
-  @jfrog/mcp-gateway \
+  @jfrog/agent-guard \
   --list-available \
   --project <PROJECT> \
   [--server <SERVER_ID>]
@@ -350,22 +350,22 @@ Output is a JSON array; each element has `name`, `packageName`,
 `description`, `type`, `packageVersion`, optional `env[]`.
 
 3. Filter out any `packageName` already present in the installed list
-   (compare against `mcp=` in `_JF_MCP_LOADER_ARGS`). Mark the rest as
+   (compare against `mcp=` in `_JF_ARGS`). Mark the rest as
    available to install.
 
 ## Key Rules
 
 - **`npx` arg order:** `--yes`, `--registry <URL>`,
-  `@jfrog/mcp-gateway`, then gateway flags. Both `--yes` and
+  `@jfrog/agent-guard`, then agent guard flags. Both `--yes` and
   `--registry` MUST precede the package name or `npx` falls back to
   the default registry (404) and may block on a no-TTY prompt.
-- **Always `"type": "stdio"`** pointing at `npx @jfrog/mcp-gateway`,
-  even for remote-only catalog MCPs (the gateway proxies them).
-  `"http"`, `"sse"`, or a top-level `"url"` bypass the gateway.
-- `_JF_MCP_LOADER_ARGS` is **only** for the entry Claude Code launches
+- **Always `"type": "stdio"`** pointing at `npx @jfrog/agent-guard`,
+  even for remote-only catalog MCPs (the agent guard proxies them).
+  `"http"`, `"sse"`, or a top-level `"url"` bypass the agent guard.
+- `_JF_ARGS` is **only** for the entry Claude Code launches
   at session start (Step 4's `mcpServers.*.env`); MUST contain
   `project=<NAME>&mcp=<PACKAGE_NAME>`.
-  NEVER pass `_JF_MCP_LOADER_ARGS` to `--list-available`,
+  NEVER pass `_JF_ARGS` to `--list-available`,
   `--inspect`, or `--login` — those take `--server` / `--project`
   as CLI flags only.
 - NEVER assume `default` as a project name. If the project is unknown
@@ -374,7 +374,7 @@ Output is a JSON array; each element has `name`, `packageName`,
   NEVER invent or guess projects or server IDs.
 - Package name MUST come from the catalog (`--inspect` /
   `--list-available`). NEVER guess. NEVER install MCPs outside the
-  gateway. NEVER use Fetch/WebFetch for catalog calls.
+  agent guard. NEVER use Fetch/WebFetch for catalog calls.
 - NEVER write a raw secret into `.mcp.json` or `~/.claude.json` —
   always `${ENV_VAR}`. NEVER show tokens / API keys.
 - NEVER try multiple servers — ask the user to pick one.
@@ -382,17 +382,17 @@ Output is a JSON array; each element has `name`, `packageName`,
 ## Troubleshooting
 
 - **`✓ connected` but 0 tools (empty `Capabilities:` when you drill
-  into `/mcp`)** — gateway proxy started, upstream MCP did not.
+  into `/mcp`)** — agent guard proxy started, upstream MCP did not.
   Top-level `✓ connected` is misleading here. NEVER report success 
   when there are 0 tools.
-  1. Relaunch with `claude --debug` and read the gateway stderr in the
+  1. Relaunch with `claude --debug` and read the agent guard stderr in the
      logs panel; diagnose by MCP type:
      - **OAuth (remote)** — re-run Step 5 (`--login`); refresh token
        likely expired.
      - **Static-token (remote)** — confirm every `${VAR}` in `env` is
        exported in the launching shell and the token is still valid.
      - **Local (stdio)** — check that the bundled binary actually
-       launched (gateway stderr will show the spawn error).
+       launched (agent guard stderr will show the spawn error).
   2. Verify that the mcp server is still allowed.
      See "Listing MCPs > Available to install".
 - **`.mcp.json` server missing from `/mcp`** — rejected. See Step 4a.
@@ -424,7 +424,7 @@ Output is a JSON array; each element has `name`, `packageName`,
   undefined `${VAR}`), or an `allowedMcpServers` / `deniedMcpServers`
   policy in managed settings (`managed-settings.json`) filtering the
   entry.
-- **Gateway: `multiple/no JFrog server configured`** (the gateway
+- **Agent Guard: `multiple/no JFrog server configured`** (the agent guard
   cannot pick a JFrog server) — pass `--server <ID>` (after
   `jf c add <SERVER_ID>`) OR export both `JFROG_URL` and
   `JFROG_ACCESS_TOKEN` in the launching shell, then relaunch Claude.
