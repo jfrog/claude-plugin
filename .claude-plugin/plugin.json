@@ -1,6 +1,6 @@
 {
   "name": "jfrog",
-  "description": "Use the JFrog Platform from Claude Code: Artifactory repos and artifacts, security findings and exposures, Catalog package safety and downloads, workflows across the SDLC, and platform administration.",
+  "description": "Official JFrog plugin. Connect Claude Code to JFrog to manage, secure and govern your software supply chain. Give agents the context to build secure, compliant software",
   "version": "0.2.0",
   "author": {
     "name": "JFrog Ltd.",
