@@ -1,7 +1,8 @@
 {
   "name": "jfrog",
-  "description": "Official JFrog plugin. Connect Claude Code to JFrog to manage, secure and govern your software supply chain. Give agents the context to build secure, compliant software",
-  "version": "0.2.0",
+  "displayName": "JFrog",
+  "description": "Official JFrog plugin. Connect Claude Code to JFrog to manage, secure, and govern your software supply chain. Give agents the context to build secure, compliant software.",
+  "version": "0.2.1",
   "author": {
     "name": "JFrog Ltd.",
     "email": "devrel@jfrog.com",
