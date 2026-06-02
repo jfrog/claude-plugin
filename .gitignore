@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# IDE settings
+.idea/
+
 # OS and editor
 .DS_Store
 *.swp
@@ -13,8 +16,9 @@
 tmp/
 temp/
 
-# Local extract when refreshing vendored skills
-.tmp-jfrog-skills/
+# Skills are vendored from jfrog/jfrog-skills only at release time (see
+# .vendor.json and .github/scripts/sync-skills.mjs). main is skill-free.
+skills/
 
 # Skill runtime caches (never commit)
 **/local-cache/

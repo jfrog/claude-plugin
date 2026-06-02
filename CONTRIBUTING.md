@@ -10,15 +10,23 @@ All contributors must sign the [JFrog CLA](https://jfrog.com/cla/) before contri
 
 1. **Fork** the repository and create a feature branch from `main`.
 2. Make your changes, ensuring they follow the existing code style and project conventions.
-3. **Validate** locally:
+3. **Vendor the skills locally** before testing — `main` does not contain `skills/`; they are pulled from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) at release time. See [`VENDOR.md`](VENDOR.md) for the full picture.
+
+```bash
+node .github/scripts/sync-skills.mjs
+```
+
+The pin lives in [`.vendor.json`](.vendor.json). Override for a one-off local run with `SKILLS_REF=v0.12.0 node .github/scripts/sync-skills.mjs`. The synced `skills/` tree is gitignored.
+
+4. **Validate** locally:
 
 ```bash
 node scripts/validate-claude-plugin.mjs
 ```
 
-Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
+This checks `.claude-plugin/plugin.json` and walks every `skills/*/SKILL.md` for required YAML frontmatter. Run it after `sync-skills.mjs` so it sees a real skill tree. Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
 
-4. **Test** by loading the repository as the plugin (the repo root is the plugin root):
+5. **Test** by loading the repository as the plugin (the repo root is the plugin root):
 
 ```bash
 claude --plugin-dir .
@@ -26,20 +34,22 @@ claude --plugin-dir .
 
 Exercise the skills you changed (for example `/jfrog:<skill-name>`). Run `/reload-plugins` after editing plugin files.
 
-5. **Commit** with a clear, descriptive message.
-6. Open a **pull request** against `main` with a summary of what changed and why.
+6. **Commit** with a clear, descriptive message. Do not commit anything under `skills/` — that tree is regenerated at release time.
+7. Open a **pull request** against `main` with a summary of what changed and why.
 
 ## Pre-release checklist
 
-- [ ] `node scripts/validate-claude-plugin.mjs` passes.
+- [ ] `node .github/scripts/sync-skills.mjs` succeeds against the pin in `.vendor.json`.
+- [ ] `node scripts/validate-claude-plugin.mjs` passes against the synced tree.
 - [ ] `claude plugin validate` passes (before directory submission or major releases).
 - [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) when the plugin changes.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
-- [ ] Smoke-test: `claude --plugin-dir .` from the repo root.
+- [ ] No vendored skills committed under `skills/`.
+- [ ] Smoke-test: `claude --plugin-dir .` from the repo root (after running the sync script).
 
 ### Submitting to the Claude plugin directory
 
-Use [Submitting your plugin](https://claude.com/docs/plugins/submit). Submit the **public GitHub URL** of this repository — the **repository root** is the plugin root (manifest in `.claude-plugin/`, skills in `skills/`).
+Use [Submitting your plugin](https://claude.com/docs/plugins/submit). Submit the **public GitHub URL** of this repository — the **repository root** is the plugin root (manifest in `.claude-plugin/`, skills vendored into `skills/` at release time from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills)).
 
 Compliance: [Anthropic Software Directory Terms](https://support.claude.com/en/articles/13145338-anthropic-software-directory-terms), [Anthropic Software Directory Policy](https://support.claude.com/en/articles/13145358-anthropic-software-directory-policy).
 

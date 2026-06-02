@@ -1,0 +1,64 @@
+# Copyright (c) JFrog Ltd. 2026
+# Licensed under the Apache License, Version 2.0
+# https://www.apache.org/licenses/LICENSE-2.0
+
+name: Release plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      skills_version:
+        description: "Optional override for the upstream skill ref (tag/branch/SHA). Leave empty to use the pin in .vendor.json."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Sync skills from upstream
+        env:
+          SKILLS_REF: ${{ inputs.skills_version }}
+        run: node .github/scripts/sync-skills.mjs
+
+      - name: Resolve release tag
+        run: |
+          VERSION=$(node -e '
+            const manifest = require("./.claude-plugin/plugin.json");
+            if (!manifest?.version) process.exit(1);
+            console.log(manifest.version);
+          ')
+          if [ -z "$VERSION" ]; then
+            echo "::error::.claude-plugin/plugin.json must define a non-empty version"
+            exit 1
+          fi
+          echo "TAG=v${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Tag the release
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --detach
+          git add -A
+          git commit -m "Release ${TAG}"
+          git tag "${TAG}"
+          git push origin "${TAG}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${TAG}" --title "${TAG}" --generate-notes
