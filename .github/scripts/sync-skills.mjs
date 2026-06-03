@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Vendors skill content from the upstream jfrog/jfrog-skills repository
-// into this plugin. Run manually whenever the upstream pin changes — the
-// jfrog-skills team typically opens a PR here that bumps `pin` in
-// .vendor.json and commits the refreshed `skills/` tree alongside it.
+// into this plugin. Run manually when bumping the pin: bump `pin` in
+// .vendor.json, then run this script to regenerate `skills/`, then
+// commit both alongside each other.
 //
 // Usage:
 //   node .github/scripts/sync-skills.mjs

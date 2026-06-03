@@ -31,7 +31,7 @@ Exercise the skills you changed (for example `/jfrog:<skill-name>`). Run `/reloa
 
 ### Updating the vendored skills
 
-The `skills/` tree is vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) and committed to `main`. The JFrog skills team owns the refresh cadence — see [`VENDOR.md`](VENDOR.md) for the full flow. To regenerate the tree locally against the pin in [`.vendor.json`](.vendor.json):
+The `skills/` tree is vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) and committed to `main` — see [`VENDOR.md`](VENDOR.md) for the full flow. To regenerate the tree locally against the pin in [`.vendor.json`](.vendor.json):
 
 ```bash
 node .github/scripts/sync-skills.mjs
