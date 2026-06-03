@@ -20,8 +20,5 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Sync skills from upstream
-        run: node .github/scripts/sync-skills.mjs
-
       - name: Validate plugin layout
         run: node scripts/validate-claude-plugin.mjs

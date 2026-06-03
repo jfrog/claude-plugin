@@ -1,21 +1,22 @@
 #!/usr/bin/env node
 // Vendors skill content from the upstream jfrog/jfrog-skills repository
-// into this plugin at release time. `main` itself never contains the
-// synced files — they live only on the release tag.
+// into this plugin. Run manually whenever the upstream pin changes — the
+// jfrog-skills team typically opens a PR here that bumps `pin` in
+// .vendor.json and commits the refreshed `skills/` tree alongside it.
 //
-// Called by .github/workflows/release.yml. Also safe to run locally to
-// preview what a pin bump will produce — skills/ is gitignored, so the
-// result is invisible to git.
+// Usage:
+//   node .github/scripts/sync-skills.mjs
 //
-// This repo IS a single Claude Code plugin (the repo root is the plugin
-// root), so unlike multi-plugin marketplaces this script reads a single
-// .vendor.json at the repo root. It then:
+// Steps the script performs:
 //   1. Reads .vendor.json to learn which repo + ref to pull.
 //   2. Downloads that tarball from codeload.github.com (public, no auth).
 //   3. Extracts it into a temp directory.
-//   4. Copies the requested paths (e.g. "skills") into the repo root.
+//   4. Copies the requested paths (e.g. "skills") into the repo root,
+//      replacing any existing tree.
 //
-// Set SKILLS_REF to override the pin for one run (e.g. SKILLS_REF=v0.12.0).
+// The pin in .vendor.json is the single source of truth — there is no
+// runtime override. To ship a different skill version, change the pin
+// in a PR and commit the synced tree alongside it.
 
 import { promises as fs, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -78,10 +79,6 @@ async function copyPath(fromDir, toDir, relativePath) {
 }
 
 // Sync this plugin: read .vendor.json, download + extract + copy.
-//
-// SKILLS_REF env var (set by the release workflow's `skills_version`
-// input) overrides the pin for ad-hoc releases; falls back to the
-// pin in .vendor.json when unset or empty.
 async function main() {
   const repoRoot = process.cwd();
   const vendorPath = path.join(repoRoot, ".vendor.json");
@@ -94,16 +91,14 @@ async function main() {
     throw new Error(`${vendorPath} must define 'repo', 'pin' and a non-empty 'paths' array`);
   }
 
-  const ref = process.env.SKILLS_REF?.trim() || pin;
-  const overridden = ref !== pin;
-  console.log(`--- ${repo} (ref: ${ref}${overridden ? " [override]" : ""}) ---`);
+  console.log(`--- ${repo} (ref: ${pin}) ---`);
 
   const workDir = await fs.mkdtemp(path.join(tmpdir(), "sync-skills-"));
   try {
     // `slug` is just a unique filename for this tarball + extract dir.
-    const slug = `${repo.replace("/", "-")}-${ref.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+    const slug = `${repo.replace("/", "-")}-${pin.replace(/[^A-Za-z0-9._-]/g, "_")}`;
     const tarball = path.join(workDir, `${slug}.tar.gz`);
-    await downloadTarball(repo, ref, tarball);
+    await downloadTarball(repo, pin, tarball);
     const extracted = await extractTarball(tarball, path.join(workDir, slug));
     for (const rel of paths) await copyPath(extracted, repoRoot, rel);
   } finally {

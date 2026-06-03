@@ -16,9 +16,5 @@
 tmp/
 temp/
 
-# Skills are vendored from jfrog/jfrog-skills only at release time (see
-# .vendor.json and .github/scripts/sync-skills.mjs). main is skill-free.
-skills/
-
 # Skill runtime caches (never commit)
 **/local-cache/
