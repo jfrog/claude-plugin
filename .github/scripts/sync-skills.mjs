@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 // Vendors skill content from the upstream jfrog/jfrog-skills repository
 // into this plugin. Run manually when bumping the pin: bump `pin` in
-// .vendor.json, then run this script to regenerate `skills/`, then
-// commit both alongside each other.
+// sync-skills-vendor.json, then run this
+// script to regenerate `skills/`, then commit both alongside each other.
 //
 // Usage:
 //   node .github/scripts/sync-skills.mjs
 //
 // Steps the script performs:
-//   1. Reads .vendor.json to learn which repo + ref to pull.
+//   1. Reads sync-skills-vendor.json to learn which repo + ref to pull.
 //   2. Downloads that tarball from codeload.github.com (public, no auth).
 //   3. Extracts it into a temp directory.
 //   4. Copies the requested paths (e.g. "skills") into the repo root,
 //      replacing any existing tree.
 //
-// The pin in .vendor.json is the single source of truth — there is no
-// runtime override. To ship a different skill version, change the pin
-// in a PR and commit the synced tree alongside it.
+// The pin in sync-skills-vendor.json is the single source of truth —
+// there is no runtime override. To ship a different skill version,
+// change the pin in a PR and commit the synced tree alongside it.
 
 import { promises as fs, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
@@ -24,6 +24,7 @@ import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 // filesystem helpers
 async function readJson(filePath) {
@@ -78,12 +79,17 @@ async function copyPath(fromDir, toDir, relativePath) {
   console.log(`  ${relativePath} -> ${path.relative(process.cwd(), to)}`);
 }
 
-// Sync this plugin: read .vendor.json, download + extract + copy.
+// Sync this plugin: read sync-skills-vendor.json, download + extract + copy.
+//
+// Paths are resolved relative to the script itself rather than CWD, so
+// the script works regardless of where it's invoked from. The repo root
+// is two levels up from .github/scripts/.
 async function main() {
-  const repoRoot = process.cwd();
-  const vendorPath = path.join(repoRoot, ".vendor.json");
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.resolve(scriptDir, "..", "..");
+  const vendorPath = path.join(scriptDir, "sync-skills-vendor.json");
   if (!(await fileExists(vendorPath))) {
-    throw new Error(`missing .vendor.json at ${vendorPath}`);
+    throw new Error(`missing sync-skills-vendor.json at ${vendorPath}`);
   }
 
   const { repo, pin, paths } = await readJson(vendorPath);

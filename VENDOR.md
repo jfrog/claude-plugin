@@ -5,7 +5,7 @@ The skill packages under `skills/` are vendored from **[jfrog/jfrog-skills](http
 | | |
 | --- | --- |
 | **Repository** | https://github.com/jfrog/jfrog-skills |
-| **Pinned release** | see `pin` in [`.vendor.json`](.vendor.json) |
+| **Pinned release** | see `pin` in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json) |
 
 Included directories: `jfrog/`, `jfrog-package-safety-and-download/` (as of the pinned release).
 
@@ -13,7 +13,7 @@ Included directories: `jfrog/`, `jfrog-package-safety-and-download/` (as of the 
 
 When the upstream repo publishes a new release, refresh the vendored tree via a PR that:
 
-1. Bumps `pin` in [`.vendor.json`](.vendor.json) to the new tag.
+1. Bumps `pin` in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json) to the new tag.
 2. Re-syncs and commits the refreshed `skills/` tree.
 3. Bumps `version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) so users actually receive the update (Claude Code skips installs whose resolved version hasn't changed).
 
@@ -23,4 +23,4 @@ To regenerate the tree locally before opening the PR:
 node .github/scripts/sync-skills.mjs
 ```
 
-The script reads `.vendor.json`, downloads the pinned upstream tarball from `codeload.github.com`, and replaces the directories listed in `paths` (today: `skills/`).
+The script reads its sibling [`sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json), downloads the pinned upstream tarball from `codeload.github.com`, and replaces the directories listed in `paths` (today: `skills/`).

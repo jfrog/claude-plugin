@@ -31,7 +31,7 @@ Exercise the skills you changed (for example `/jfrog:<skill-name>`). Run `/reloa
 
 ### Updating the vendored skills
 
-The `skills/` tree is vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) and committed to `main` — see [`VENDOR.md`](VENDOR.md) for the full flow. To regenerate the tree locally against the pin in [`.vendor.json`](.vendor.json):
+The `skills/` tree is vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) and committed to `main` — see [`VENDOR.md`](VENDOR.md) for the full flow. To regenerate the tree locally against the pin in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json):
 
 ```bash
 node .github/scripts/sync-skills.mjs
@@ -45,7 +45,7 @@ This downloads the pinned upstream tarball and replaces the contents of `skills/
 - [ ] `claude plugin validate` passes (before directory submission or major releases).
 - [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) when the plugin changes.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
-- [ ] If the skill tree changed: `.vendor.json` `pin` matches the upstream tag the new tree was generated from.
+- [ ] If the skill tree changed: `pin` in `.github/scripts/sync-skills-vendor.json` matches the upstream tag the new tree was generated from.
 - [ ] Smoke-test: `claude --plugin-dir .` from the repo root.
 
 ### Submitting to the Claude plugin directory
