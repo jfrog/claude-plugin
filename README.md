@@ -20,8 +20,8 @@ Before installing, make sure you have:
 
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
-- **Node.js** (≥ 14) — with `npx` on your `PATH`.
-- **JFrog CLI** (≥ 2.x, optional) — Recommended for `jf config add` authentication (see [Authentication](#authentication)).
+- **Node.js** (≥ 14) — with `npx` on your `PATH` (used by the Agent Guard hook).
+- **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog project** (optional) — If you want to use the Agent Guard feature.
 
@@ -114,6 +114,26 @@ When an MCP server requires a sensitive configuration, the agent cannot set the 
 ## Troubleshooting
 
 See the [JFrog MCP Registry troubleshooting guide](https://docs.jfrog.com/ai-ml/docs/mcp-registry-troubleshooting).
+
+---
+
+## Updating the vendored skills
+
+The `skills/` tree is vendored from [`jfrog/jfrog-skills`](https://github.com/jfrog/jfrog-skills) at the version pinned in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json). To pull a newer upstream release into this repo:
+
+1. Bump `pin` in `.github/scripts/sync-skills-vendor.json` to the new tag (e.g. `v0.12.0`).
+2. Run the sync script from the repo root:
+
+   ```bash
+   node .github/scripts/sync-skills.mjs
+   ```
+
+   It downloads the pinned tarball from `codeload.github.com`, extracts it, and replaces the directories listed in `paths` (today: `skills/`).
+3. Bump `version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) so users actually receive the update — Claude Code skips installs whose resolved version hasn't changed.
+4. Update the pinned-version link in the [Prerequisites](#prerequisites) section so the skill runtime requirements point at the new tag.
+5. Commit the pin bump, the regenerated `skills/` tree, the version bump, and the README link bump together, and open a PR.
+
+See [`VENDOR.md`](VENDOR.md) for the full picture.
 
 ---
 

@@ -16,7 +16,7 @@ All contributors must sign the [JFrog CLA](https://jfrog.com/cla/) before contri
 node scripts/validate-claude-plugin.mjs
 ```
 
-Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
+This checks `.claude-plugin/plugin.json` and walks every `skills/*/SKILL.md` for required YAML frontmatter. Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
 
 4. **Test** by loading the repository as the plugin (the repo root is the plugin root):
 
@@ -29,17 +29,28 @@ Exercise the skills you changed (for example `/jfrog:<skill-name>`). Run `/reloa
 5. **Commit** with a clear, descriptive message.
 6. Open a **pull request** against `main` with a summary of what changed and why.
 
+### Updating the vendored skills
+
+The `skills/` tree is vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills) and committed to `main` — see [`VENDOR.md`](VENDOR.md) for the full flow. To regenerate the tree locally against the pin in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json):
+
+```bash
+node .github/scripts/sync-skills.mjs
+```
+
+This downloads the pinned upstream tarball and replaces the contents of `skills/`. Commit the result alongside any pin/version bumps.
+
 ## Pre-release checklist
 
 - [ ] `node scripts/validate-claude-plugin.mjs` passes.
 - [ ] `claude plugin validate` passes (before directory submission or major releases).
 - [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) when the plugin changes.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
+- [ ] If the skill tree changed: `pin` in `.github/scripts/sync-skills-vendor.json` matches the upstream tag the new tree was generated from.
 - [ ] Smoke-test: `claude --plugin-dir .` from the repo root.
 
 ### Submitting to the Claude plugin directory
 
-Use [Submitting your plugin](https://claude.com/docs/plugins/submit). Submit the **public GitHub URL** of this repository — the **repository root** is the plugin root (manifest in `.claude-plugin/`, skills in `skills/`).
+Use [Submitting your plugin](https://claude.com/docs/plugins/submit). Submit the **public GitHub URL** of this repository — the **repository root** is the plugin root (manifest in `.claude-plugin/`, skills committed under `skills/`, vendored from [jfrog/jfrog-skills](https://github.com/jfrog/jfrog-skills)).
 
 Compliance: [Anthropic Software Directory Terms](https://support.claude.com/en/articles/13145338-anthropic-software-directory-terms), [Anthropic Software Directory Policy](https://support.claude.com/en/articles/13145358-anthropic-software-directory-policy).
 

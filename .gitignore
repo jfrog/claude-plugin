@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# IDE settings
+.idea/
+
 # OS and editor
 .DS_Store
 *.swp
@@ -12,9 +15,6 @@
 *.log
 tmp/
 temp/
-
-# Local extract when refreshing vendored skills
-.tmp-jfrog-skills/
 
 # Skill runtime caches (never commit)
 **/local-cache/

@@ -44,19 +44,9 @@ line and break parsers (e.g. JSON "Extra data" errors).
 - One temp file per worker or chunk, then concatenate; or
 - Use advisory locking (`flock`) if one file must be shared.
 
-## Agent sandboxes and the environment check
-
-`scripts/check-environment.sh` does **not** call your JFrog server, but it may
-make an outbound request to `releases.jfrog.io` for version checking and may
-**write**
-`<skill_path>/local-cache/jfrog-skill-state.json` when the cache is stale or missing. In a
-restricted agent sandbox, **workspace write** access can fail even when
-`full_network` is granted. Request permissions that allow writing `<skill_path>/local-cache`
-when the check fails with a filesystem error.
-
 For bulk API or CLI output files, use `/tmp` or `mktemp`; do not use
-`local-cache/` except for `jfrog-skill-state.json` and the OneModel schema file
-(see main SKILL.md).
+`~/.jfrog/skills-cache/` except for `jfrog-skill-state.json` and the OneModel
+schema file (see main SKILL.md).
 
 ## Shell hygiene
 
@@ -79,7 +69,7 @@ When looping over items (repos, builds, users) and fetching detail for each:
 ```bash
 : >results.ndjson
 while read -r key; do
-  body=$(jf rt curl -sS -XGET "/api/repositories/$key" || true)
+  body=$(jf api "/artifactory/api/repositories/$key" || true)
   if echo "$body" | jq -e . >/dev/null 2>&1; then
     echo "$body" | jq -c . >>results.ndjson
   else
@@ -89,7 +79,7 @@ done < <(jq -r '.[].key' list.json)
 jq -s '.' results.ndjson > details.json
 ```
 
-Never pipe a loop of `jf rt curl` calls directly into `jq -s` without
+Never pipe a loop of `jf api` calls directly into `jq -s` without
 per-body validation.
 
 ## Where to find product specifics
@@ -99,4 +89,5 @@ per-body validation.
 - JFrog Projects (endpoints): `references/projects-api.md`
 - Joining Artifactory repos to Projects (`projectKey`, roles, environments):
   `references/platform-access-entities.md`
-- Credential tiers: `references/jfrog-credential-patterns.md`
+- Platform API invocation (all products through `jf api`): see
+  `SKILL.md` § *Invoking platform APIs with `jf api`*
