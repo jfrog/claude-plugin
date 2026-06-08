@@ -171,11 +171,21 @@ Split Step 2 inputs by `isRequired`:
 For each input in Step 4:
 
 - **Secrets** (`isSecret=true`): use `${VAR_NAME}` in the config;
-  tell the user to export it via
-  `read -rs VAR_NAME && export VAR_NAME && echo exported`
-  (and add to `~/.zshrc` for persistence). They are picked up on next
-  launch (Step 4a). NEVER take secrets in chat, echo them back, or
-  write raw values into config.
+  tell the user to export it for the current session via
+  `read -rs VAR_NAME && export VAR_NAME && echo exported`.
+  For persistence, the right startup file depends on the user's
+  **shell**, not their OS — macOS and Linux both commonly run zsh or
+  bash. Detect the shell (e.g. `echo "$SHELL"`) and add the export to
+  the file that shell loads on startup:
+  - **zsh** (the macOS default) → `~/.zshrc`
+  - **bash** → `~/.bashrc`; note macOS login shells read
+    `~/.bash_profile`, which usually sources `~/.bashrc`
+  - **fish** → `~/.config/fish/config.fish` (use `set -gx`)
+  - **Windows** → use `setx VAR_NAME "<value>"` (PowerShell/CMD)
+    instead of the `read`/`export` snippet
+  If unsure which file the shell sources, ask the user. Values are
+  picked up on next launch (Step 4a). NEVER take secrets in chat, echo
+  them back, or write raw values into config.
 - **Non-secrets**: literal in `env` or `${VAR_NAME}` — ask if unclear.
 
 ### Step 4: Write the config entry
@@ -346,10 +356,16 @@ npx --yes \
   [--server <SERVER_ID>]
 ```
 
-Output is a JSON array; each element has `name`, `packageName`,
-`description`, `type`, `packageVersion`, optional `env[]`.
+The output is a compact TSV: a header line, then one server per line,
+tab-separated: `name<TAB>type<TAB>version<TAB>description`.
+Run the command ONCE and present the rows directly as a numbered
+table — do NOT re-run it, redirect it, or parse it with `python3`/`jq`.
+The `name` column is the install identifier (the value you pass to
+`--inspect --mcp` and to install); `packageName` is NOT a separate
+column — for remote/http MCPs there is no package name, so `name` is
+the display name.
 
-3. Filter out any `packageName` already present in the installed list
+3. Filter out any `name` already present in the installed list
    (compare against `mcp=` in `_JF_ARGS`). Mark the rest as
    available to install.
 
@@ -375,6 +391,11 @@ Output is a JSON array; each element has `name`, `packageName`,
 - Package name MUST come from the catalog (`--inspect` /
   `--list-available`). NEVER guess. NEVER install MCPs outside the
   agent guard. NEVER use Fetch/WebFetch for catalog calls.
+- NEVER pipe a catalog command through `python3`, and NEVER capture it
+  with `2>&1` — `npx`/`npm` writes progress to stderr, which corrupts
+  the output stream. For `--list-available` present the compact TSV it
+  prints; for `--inspect` read the JSON it prints on stdout
+  directly (or with a single `jq` filter), never via `python3`.
 - NEVER write a raw secret into `.mcp.json` or `~/.claude.json` —
   always `${ENV_VAR}`. NEVER show tokens / API keys.
 - NEVER try multiple servers — ask the user to pick one.
