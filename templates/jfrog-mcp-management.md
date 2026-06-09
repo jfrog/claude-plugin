@@ -87,7 +87,7 @@ unless absolutely necessary:
 3. Else read `~/.jfrog/jfrog-cli.conf.v6`
    (`%USERPROFILE%\.jfrog\jfrog-cli.conf.v6` on Windows) via a
    terminal command (file-search skips hidden dirs).
-   NEVER print the full file contents as it can contain secrets. 
+   NEVER print the full file contents as it can contain secrets.
    Use the serverId subkeys:
    - exactly one server → use it without asking.
    - two or more → list the `serverId`s and ASK the user which one.
