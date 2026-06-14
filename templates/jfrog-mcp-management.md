@@ -20,14 +20,14 @@ action below):
 - In any "currently installed" listing, report `jfrog` as
   `scope: plugin (jfrog)`, `managed-by: plugin`. The rest of this
   document does not apply to it.
-- If the AI Catalog also exposes an MCP whose name resolves to
-  `jfrog`, do NOT install it — names would collide. Skip and tell
-  the user the plugin already provides `jfrog`.
-- Tool calls on `jfrog` are constrained by the JFrog access token,
-  not by AI Catalog tool policy. To enforce catalog-managed policy
-  on this name, an admin publishes `jfrog-mcp` in the AI Catalog and
-  users invoke it with a `project` in `_JF_ARGS` (standard catalog
-  flow).
+- Tool calls on the built-in `jfrog` are constrained by the JFrog
+  access token, not by AI Catalog tool policy. If the AI Catalog
+  also publishes the JFrog MCP (typically as `jfrog-mcp`) and the
+  user wants catalog-managed tool policy, install it via the
+  standard catalog flow (`_JF_ARGS=project=<key>&mcp=jfrog-mcp`)
+  under a different `mcpServers` key — e.g., `jfrog-catalog` — so
+  it coexists with the built-in `jfrog`. Tell the user about the
+  rename and that they end up with both entries.
 
 # MCP Server Management — JFrog Agent Guard
 
