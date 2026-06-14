@@ -99,35 +99,32 @@ The plugin ships a built-in JFrog MCP (server name: `jfrog`)
 registered in the plugin's `.mcp.json`. Claude Code starts it
 automatically when the plugin is enabled — no `/mcp` command, no
 catalog install, no AI Catalog approval involved. It launches the
-standard `npx @jfrog/agent-guard` shape with the **reserved upstream
-name** `jfrog-plugin-mcp` in `_JF_ARGS` (see `.mcp.json`).
+standard `npx @jfrog/agent-guard` shape with `_JF_ARGS=mcp=jfrog-plugin-mcp`
+and **no project** (see `.mcp.json`).
 
-Inside agent-guard the reserved name follows a **catalog-first /
-fallback-on-catalog-empty** path:
-
-1. agent-guard always tries the AI Catalog for `jfrog-plugin-mcp` first.
-2. If the catalog has an entry under that name, agent-guard uses it —
-   tool policy and headers from the catalog apply normally.
-3. If the catalog has no entry / is unreachable / the user has no
-   entitlement, agent-guard falls back to its hardcoded HTTP endpoint
-   `${JFROG_URL}/mcp` with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
+Inside agent-guard, that exact combination —
+**reserved name `jfrog-plugin-mcp` + no `project`** — is the
+plugin-managed signal: agent-guard skips the AI Catalog entirely
+and connects directly to the hardcoded HTTP endpoint
+`${JFROG_URL}/mcp` with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
 
 Both env vars are listed under [Authentication](#authentication); if
-either is unset the fallback path errors at startup with a clear
+either is unset agent-guard fails fast at startup with a clear
 message instead of silently allowing all tools.
 
-**Always on, regardless of AI Catalog allowlist.** A user with no AI
-Catalog entitlement, or whose catalog explicitly omits the JFrog
-MCP, still gets the plugin-managed `jfrog` working through the
-fallback. The only supported removal is `/plugin uninstall jfrog`.
+**Always on, regardless of AI Catalog allowlist or entitlement.**
+A user with no AI Catalog entitlement, or whose catalog explicitly
+omits the JFrog MCP, still gets the plugin-managed `jfrog` working.
+The only supported removal is `/plugin uninstall jfrog`.
 
-**Org policy still wins when configured.** Because the catalog is
-consulted first, an admin who publishes `jfrog-plugin-mcp` in their
-AI Catalog with a tool policy gets that policy enforced — the
-fallback never fires for that org. Anyone (including a malicious
-project-level `.mcp.json`) writing the same `_JF_ARGS=mcp=jfrog-plugin-mcp`
-is subject to the same catalog-first check, so the reserved name is
-not a policy bypass.
+**The reserved name is not a policy bypass.** A user-supplied
+`.mcp.json` that copies `_JF_ARGS=mcp=jfrog-plugin-mcp` reaches
+exactly the same JFrog MCP — the same one the org admin already
+controls via the JFrog access token's permissions. Any
+`_JF_ARGS=mcp=jfrog-plugin-mcp&project=<key>` (with a project)
+goes through the standard AI Catalog flow instead, so org admins
+who want catalog-managed tool policy on this name simply publish
+it in their AI Catalog under that project.
 
 **No enterprise MDM action required.** The plugin's launch shape
 (`command: "npx"`, `args: [..., "@jfrog/agent-guard"]`) is the same

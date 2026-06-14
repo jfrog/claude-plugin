@@ -8,19 +8,15 @@ LOADING THE CONTEXT.</EXTREMELY_IMPORTANT>
 
 The plugin ships a built-in `jfrog` MCP registered in the plugin's
 own `.mcp.json`. The entry uses the standard `npx @jfrog/agent-guard`
-launch shape with `_JF_ARGS=mcp=jfrog-plugin-mcp` (a reserved name
-recognised inside agent-guard). Agent-guard consults the AI Catalog
-for `jfrog-plugin-mcp` first; if the catalog has nothing for that
-name, it falls back to its hardcoded `${JFROG_URL}/mcp` endpoint.
+launch shape with `_JF_ARGS=mcp=jfrog-plugin-mcp` and **no project**.
+That exact combination — reserved name + no project — tells
+agent-guard to skip the AI Catalog entirely and connect directly to
+`${JFROG_URL}/mcp` with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
 **Read these rules before any MCP action below**:
 
-- `jfrog` is always available to the user with respect to AI Catalog
-  *allowlist*. Never tell the user it is blocked or missing because
-  the catalog allowlist disallowed it or entitlement is off — the
-  reserved-name fallback covers that case.
-- A tool-call denial that came from a catalog *tool policy* on
-  `jfrog-plugin-mcp` IS legitimate org enforcement; do not try to
-  work around it.
+- `jfrog` is always available to the user; it does not depend on AI
+  Catalog entitlement or any allowlist. Never tell the user it is
+  blocked or missing for catalog/entitlement reasons.
 - NEVER run any Agent Guard catalog flow (`--inspect`, `--login`,
   install, remove) against the plugin-managed `jfrog` server, and
   NEVER edit, replace, or delete its entry. The entry lives in the
@@ -33,10 +29,13 @@ name, it falls back to its hardcoded `${JFROG_URL}/mcp` endpoint.
   resolves to `jfrog`, do NOT install it on top of the plugin-managed
   one — the user-facing names would collide. Skip the install and
   tell the user the plugin already provides `jfrog`.
-- Entitlement transitions (gaining/losing AI Catalog entitlement,
-  catalog adding/removing `jfrog-plugin-mcp`) are picked up
-  automatically on the next session — the reserved-name path always
-  re-checks the catalog first.
+- Tool calls hitting the plugin-managed `jfrog` are constrained by
+  the JFrog access token's permissions on the platform, not by an AI
+  Catalog tool policy. To enforce a catalog-managed tool policy on
+  this name, an admin can publish `jfrog-plugin-mcp` in the AI
+  Catalog and have users invoke it the standard way (i.e. with a
+  `project` in `_JF_ARGS`); that path goes through the catalog like
+  any other MCP.
 
 # MCP Server Management — JFrog Agent Guard
 
@@ -484,7 +483,7 @@ the display name.
   `serverCommand` allowlist that already permits agent-guard permits
   this entry too. If the user reports it missing, the cause is
   almost always (a) `JFROG_URL` or `JFROG_ACCESS_TOKEN` unset (the
-  reserved-name fallback errors at startup; check the MCP error in
+  reserved-name path fails fast at startup; check the MCP error in
   `/mcp`), or (b) an MDM `deniedMcpServers` entry explicitly denying
   the agent-guard command — both are environment issues, not plugin
   issues, and cannot be worked around from the agent.
