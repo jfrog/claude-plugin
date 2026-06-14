@@ -8,7 +8,7 @@
         "@jfrog/agent-guard"
       ],
       "env": {
-        "_JF_ARGS": "mcp=jfrog-plugin-mcp"
+        "_JF_ARGS": "mcp=jfrog-mcp"
       }
     }
   }

@@ -8,7 +8,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 | Component | Feature | Description |
 | --- | --- | --- |
-| **MCP** | JFrog MCP (always-on) | Plugin-bundled JFrog MCP routed through `@jfrog/agent-guard` to `${JFROG_URL}/mcp`. Always available, not subject to AI Catalog policy — see [Plugin-managed JFrog MCP](#plugin-managed-jfrog-mcp). |
+| **MCP** | JFrog MCP (always-on) | Built-in JFrog MCP routed through `@jfrog/agent-guard` to `${JFROG_URL}/mcp`. Always available, not subject to AI Catalog policy — see [JFrog MCP](#jfrog-mcp). |
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
@@ -93,42 +93,14 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Is this Maven package approved for use?" | Checks curation entitlement and policy for the requested package. |
 | "Download `requests` via JFrog." | Resolves the package through an Artifactory remote cache or curation-aware package manager. |
 
-### Plugin-managed JFrog MCP
+### JFrog MCP
 
-The plugin ships a built-in JFrog MCP (server name: `jfrog`)
-registered in the plugin's `.mcp.json`. Claude Code starts it
-automatically when the plugin is enabled — no `/mcp` command, no
-catalog install, no AI Catalog approval involved. It launches the
-standard `npx @jfrog/agent-guard` shape with
-`_JF_ARGS=mcp=jfrog-plugin-mcp` and **no project** (see `.mcp.json`).
-
-Inside agent-guard, that exact `_JF_ARGS` shape — `mcp=jfrog-plugin-mcp`
-with no `project` — is the plugin-managed signal: agent-guard skips
-the AI Catalog entirely and connects directly to `${JFROG_URL}/mcp`
-with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
-
-Both env vars are listed under [Authentication](#authentication); if
-either is unset agent-guard fails fast at startup with a clear
-message instead of silently allowing all tools.
-
-**Always on, regardless of AI Catalog allowlist or entitlement.**
-A user with no AI Catalog entitlement, or whose catalog explicitly
-omits the JFrog MCP, still gets the plugin-managed `jfrog` working.
-The only supported removal is `/plugin uninstall jfrog`.
-
-**Not a policy bypass.** A user-supplied `.mcp.json` that copies
-`_JF_ARGS=mcp=jfrog-plugin-mcp` reaches exactly the same JFrog MCP
-— the same one the org admin already controls via the JFrog access
-token's permissions. Any `_JF_ARGS=mcp=jfrog-plugin-mcp&project=<key>`
-(with a project) goes through the standard AI Catalog flow instead,
-so org admins who want catalog-managed tool policy on this name
-simply publish it in their AI Catalog under that project.
-
-**No enterprise MDM action required.** The plugin's launch shape
-(`command: "npx"`, `args: [..., "@jfrog/agent-guard"]`) is the same
-shape enterprise admins already allow for Agent Guard, so existing
-`allowedMcpServers` `serverCommand` entries match it as-is.
-`_JF_ARGS` lives in `env`, which MDM matchers do not inspect.
+The plugin ships a built-in `jfrog` MCP registered in `.mcp.json`. Claude
+Code launches it automatically as `npx @jfrog/agent-guard` with
+`_JF_ARGS=mcp=jfrog-mcp`. agent-guard recognizes that shape, skips the AI
+Catalog, and connects directly to `${JFROG_URL}/mcp` with
+`Authorization: Bearer ${JFROG_ACCESS_TOKEN}` (both env vars are listed
+under [Authentication](#authentication)).
 
 ### MCP server management (Agent Guard)
 
