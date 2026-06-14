@@ -9,9 +9,9 @@ LOADING THE CONTEXT.</EXTREMELY_IMPORTANT>
 The plugin ships a built-in `jfrog` MCP registered in the plugin's
 own `.mcp.json`. The entry uses the standard `npx @jfrog/agent-guard`
 launch shape with `_JF_ARGS=mcp=jfrog-plugin-mcp` and **no project**.
-That exact combination — reserved name + no project — tells
-agent-guard to skip the AI Catalog entirely and connect directly to
-`${JFROG_URL}/mcp` with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
+That exact `_JF_ARGS` shape tells agent-guard to skip the AI Catalog
+entirely and connect directly to `${JFROG_URL}/mcp` with
+`Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
 **Read these rules before any MCP action below**:
 
 - `jfrog` is always available to the user; it does not depend on AI
@@ -483,7 +483,7 @@ the display name.
   `serverCommand` allowlist that already permits agent-guard permits
   this entry too. If the user reports it missing, the cause is
   almost always (a) `JFROG_URL` or `JFROG_ACCESS_TOKEN` unset (the
-  reserved-name path fails fast at startup; check the MCP error in
+  plugin-managed path fails fast at startup; check the MCP error in
   `/mcp`), or (b) an MDM `deniedMcpServers` entry explicitly denying
   the agent-guard command — both are environment issues, not plugin
   issues, and cannot be worked around from the agent.

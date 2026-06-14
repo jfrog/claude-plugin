@@ -99,14 +99,13 @@ The plugin ships a built-in JFrog MCP (server name: `jfrog`)
 registered in the plugin's `.mcp.json`. Claude Code starts it
 automatically when the plugin is enabled — no `/mcp` command, no
 catalog install, no AI Catalog approval involved. It launches the
-standard `npx @jfrog/agent-guard` shape with `_JF_ARGS=mcp=jfrog-plugin-mcp`
-and **no project** (see `.mcp.json`).
+standard `npx @jfrog/agent-guard` shape with
+`_JF_ARGS=mcp=jfrog-plugin-mcp` and **no project** (see `.mcp.json`).
 
-Inside agent-guard, that exact combination —
-**reserved name `jfrog-plugin-mcp` + no `project`** — is the
-plugin-managed signal: agent-guard skips the AI Catalog entirely
-and connects directly to the hardcoded HTTP endpoint
-`${JFROG_URL}/mcp` with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
+Inside agent-guard, that exact `_JF_ARGS` shape — `mcp=jfrog-plugin-mcp`
+with no `project` — is the plugin-managed signal: agent-guard skips
+the AI Catalog entirely and connects directly to `${JFROG_URL}/mcp`
+with `Authorization: Bearer ${JFROG_ACCESS_TOKEN}`.
 
 Both env vars are listed under [Authentication](#authentication); if
 either is unset agent-guard fails fast at startup with a clear
@@ -117,21 +116,19 @@ A user with no AI Catalog entitlement, or whose catalog explicitly
 omits the JFrog MCP, still gets the plugin-managed `jfrog` working.
 The only supported removal is `/plugin uninstall jfrog`.
 
-**The reserved name is not a policy bypass.** A user-supplied
-`.mcp.json` that copies `_JF_ARGS=mcp=jfrog-plugin-mcp` reaches
-exactly the same JFrog MCP — the same one the org admin already
-controls via the JFrog access token's permissions. Any
-`_JF_ARGS=mcp=jfrog-plugin-mcp&project=<key>` (with a project)
-goes through the standard AI Catalog flow instead, so org admins
-who want catalog-managed tool policy on this name simply publish
-it in their AI Catalog under that project.
+**Not a policy bypass.** A user-supplied `.mcp.json` that copies
+`_JF_ARGS=mcp=jfrog-plugin-mcp` reaches exactly the same JFrog MCP
+— the same one the org admin already controls via the JFrog access
+token's permissions. Any `_JF_ARGS=mcp=jfrog-plugin-mcp&project=<key>`
+(with a project) goes through the standard AI Catalog flow instead,
+so org admins who want catalog-managed tool policy on this name
+simply publish it in their AI Catalog under that project.
 
 **No enterprise MDM action required.** The plugin's launch shape
 (`command: "npx"`, `args: [..., "@jfrog/agent-guard"]`) is the same
 shape enterprise admins already allow for Agent Guard, so existing
-`allowedMcpServers` `serverCommand` entries match it as-is. The
-reserved name lives in `env._JF_ARGS`, which MDM matchers do not
-inspect.
+`allowedMcpServers` `serverCommand` entries match it as-is.
+`_JF_ARGS` lives in `env`, which MDM matchers do not inspect.
 
 ### MCP server management (Agent Guard)
 
