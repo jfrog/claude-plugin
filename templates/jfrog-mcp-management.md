@@ -471,10 +471,13 @@ the display name.
   policy in managed settings (`managed-settings.json`) filtering the
   entry.
 - **Built-in `jfrog` MCP missing** — almost always either (a)
-  `JFROG_URL` / `JFROG_ACCESS_TOKEN` unset (it fails fast at startup;
-  check the error in `/mcp`), or (b) an MDM `deniedMcpServers`
-  entry denying the agent-guard command. Both are environment
-  issues, not plugin issues.
+  `JFROG_URL` / `JFROG_ACCESS_TOKEN` not exported in the launching
+  shell (agent-guard reads them from the shell for the plugin's
+  bundled `jfrog` entry — they MUST NEVER be added to any
+  `.mcp.json` `env` block, including the bundled one); fails fast at
+  startup, check the error in `/mcp`. Or (b) an MDM
+  `deniedMcpServers` entry denying the agent-guard command. Both are
+  environment issues, not plugin issues.
 - **Agent Guard: `multiple/no JFrog server configured`** (the agent guard
   cannot pick a JFrog server) — pass `--server <ID>` (after
   `jf c add <SERVER_ID>`) OR export both `JFROG_URL` and
