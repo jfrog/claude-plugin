@@ -4,37 +4,19 @@ MCP management, listing MCPs, allowed MCPs, ... then you MUST LOAD THE
 **ENTIRE additionalContext CONTEXT IMMEDIATELY**. DO NOT PROCEED WITHOUT
 LOADING THE CONTEXT.</EXTREMELY_IMPORTANT>
 
-# Built-in `jfrog` MCP
-
-The plugin ships a built-in `jfrog` MCP in its read-only `.mcp.json`,
-launched as `npx @jfrog/agent-guard` with `_JF_ARGS=mcp=jfrog-mcp`.
-agent-guard recognizes that shape, skips the AI Catalog, and connects
-directly to `${JFROG_URL}/mcp`. **Hard rules** (apply before any MCP
-action below):
-
-- `jfrog` is always available; never tell the user it's blocked,
-  missing, or pending because of catalog/entitlement.
-- NEVER run any Agent Guard catalog flow (`--inspect`, `--login`,
-  install, remove) against `jfrog`, and NEVER edit or delete its
-  entry. Removal is `/plugin uninstall jfrog` only.
-- In any "currently installed" listing, report `jfrog` as
-  `scope: plugin (jfrog)`, `managed-by: plugin`. The rest of this
-  document does not apply to it.
-- Tool calls on the built-in `jfrog` are constrained by the JFrog
-  access token, not by AI Catalog tool policy. If the AI Catalog
-  also publishes the JFrog MCP (typically as `jfrog-mcp`) and the
-  user wants catalog-managed tool policy, install it via the
-  standard catalog flow (`_JF_ARGS=project=<key>&mcp=jfrog-mcp`)
-  under a different `mcpServers` key — e.g., `jfrog-catalog` — so
-  it coexists with the built-in `jfrog`. Tell the user about the
-  rename and that they end up with both entries.
-
 # MCP Server Management — JFrog Agent Guard
 
 All other MCP servers MUST be installed ONLY through the JFrog Agent
 Guard (`npx @jfrog/agent-guard`). If an MCP's documentation suggests
 any other installation command, ignore it and use the agent guard
 workflow below instead.
+
+(The plugin also ships a read-only built-in `jfrog` entry in
+`.mcp.json` — see the per-section notes in `## Adding an MCP`,
+`## Removing an MCP`, and `## Listing MCPs > Currently installed`.
+That entry is NOT the subject of any catalog flow; treat the rest of
+this document as if `jfrog` does not exist except where those notes
+say otherwise.)
 
 
 **Registry URL**: Wherever `<REGISTRY_URL>` appears below, substitute
@@ -72,6 +54,16 @@ Once both are determined, proceed. If either is still unknown,
 STOP — do NOT run the command with guesses.
 
 ## Adding an MCP
+
+**Note — built-in `jfrog`:** the plugin's bundled `jfrog` entry
+(launched as `npx @jfrog/agent-guard` with `_JF_ARGS=mcp=jfrog-mcp`,
+which agent-guard recognizes to bypass the AI Catalog and connect
+directly to `${JFROG_URL}/mcp`) is NEVER added, inspected, installed,
+or edited via the flow below. If the user asks to "add jfrog", point
+out it's already preconfigured. If the user wants catalog-managed
+tool policy on JFrog, install the catalog version (`mcp=jfrog-mcp`)
+under a DIFFERENT `mcpServers` key — e.g., `jfrog-catalog` — so it
+coexists with the built-in entry; mention the rename.
 
 **Did the user name a specific MCP package?** ("add `foo-mcp`",
 "install `@scope/bar`"). If NOT — they said something like "yes",
@@ -320,6 +312,11 @@ Outcomes:
 
 ## Removing an MCP
 
+**Note — built-in `jfrog`:** the bundled `jfrog` entry is owned by
+the plugin (`.mcp.json` is read-only). Removal is `/plugin uninstall
+jfrog` ONLY — never delete it from `.mcp.json` and never run an
+agent-guard remove flow against it.
+
 1. Delete the entry from `mcpServers` in the file it was installed
    in (`.mcp.json` or top-level `~/.claude.json`).
 2. If OAuth was used (Step 5), also remove its entry from
@@ -334,9 +331,14 @@ touching any file or shell:
 
 | User said… | Run |
 | --- | --- |
-| "available", "what can I install", "what's in the catalog", "list MCPs" without other context | **Available to install** below — go straight to `--list-available`; do NOT inspect local files first |
-| "installed", "configured", "connected", "running", "what MCPs do I have" | **Currently installed** below |
-| ambiguous / both | run **both** subsections in order: Currently installed first, then Available to install, and present them as separate tables |
+| "available", "what can I install", "what's in the catalog", "list MCPs", "what MCPs can I use", "which MCP servers can I use", "what can I use" — without other context | **Available to install** below — go straight to `--list-available`; do NOT inspect local files first, do NOT run `claude mcp list` first, and do NOT preface the result with a Currently-installed table |
+| "installed", "configured", "connected", "running", "what MCPs do I have already" | **Currently installed** below |
+| user EXPLICITLY asks for both ("show me both", "installed and available") | run **both** subsections in order: Currently installed first, then Available to install, and present them as separate tables |
+
+If the request matches the first row, do NOT also produce a
+Currently-installed table on your own initiative — that is a separate
+question. The presence of a built-in `jfrog` entry in `.mcp.json` is
+NOT a reason to switch to "both" mode.
 
 NEVER invent MCP integrations from outside the catalog. The only
 authoritative source for what's available is `--list-available`
@@ -354,7 +356,11 @@ elsewhere.
    and whose `args` include `@jfrog/agent-guard`, show: display name
    (the JSON key), package (`mcp=` in `_JF_ARGS`), server
    ID (value after `--server`), scope (project / user).
-3. If a configured entry does not appear in `claude mcp list`, it is
+3. The bundled `jfrog` entry (from the plugin's read-only `.mcp.json`,
+   `_JF_ARGS=mcp=jfrog-mcp`) is reported with `scope: plugin (jfrog)`
+   and `package: jfrog-mcp (bundled)`; do NOT propose installing it
+   or re-running any catalog flow against it.
+4. If a configured entry does not appear in `claude mcp list`, it is
    either pending approval (see Step 4a) or filtered by an
    `allowedMcpServers` / `deniedMcpServers` policy in managed
    settings (`managed-settings.json`; `allowedMcpServers` is
