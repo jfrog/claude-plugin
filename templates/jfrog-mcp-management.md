@@ -4,37 +4,12 @@ MCP management, listing MCPs, allowed MCPs, ... then you MUST LOAD THE
 **ENTIRE additionalContext CONTEXT IMMEDIATELY**. DO NOT PROCEED WITHOUT
 LOADING THE CONTEXT.</EXTREMELY_IMPORTANT>
 
-# Built-in `jfrog` MCP
-
-The plugin ships a built-in `jfrog` MCP in its read-only `.mcp.json`,
-launched as `npx @jfrog/agent-guard` with `_JF_ARGS=mcp=jfrog-mcp`.
-agent-guard recognizes that shape, skips the AI Catalog, and connects
-directly to `${JFROG_URL}/mcp`. **Hard rules** (apply before any MCP
-action below):
-
-- `jfrog` is always available; never tell the user it's blocked,
-  missing, or pending because of catalog/entitlement.
-- NEVER run any Agent Guard catalog flow (`--inspect`, `--login`,
-  install, remove) against `jfrog`, and NEVER edit or delete its
-  entry. Removal is `/plugin uninstall jfrog` only.
-- In any "currently installed" listing, report `jfrog` as
-  `scope: plugin (jfrog)`, `managed-by: plugin`. The rest of this
-  document does not apply to it.
-- Tool calls on the built-in `jfrog` are constrained by the JFrog
-  access token, not by AI Catalog tool policy. If the AI Catalog
-  also publishes the JFrog MCP (typically as `jfrog-mcp`) and the
-  user wants catalog-managed tool policy, install it via the
-  standard catalog flow (`_JF_ARGS=project=<key>&mcp=jfrog-mcp`)
-  under a different `mcpServers` key — e.g., `jfrog-catalog` — so
-  it coexists with the built-in `jfrog`. Tell the user about the
-  rename and that they end up with both entries.
-
 # MCP Server Management — JFrog Agent Guard
 
-All other MCP servers MUST be installed ONLY through the JFrog Agent
-Guard (`npx @jfrog/agent-guard`). If an MCP's documentation suggests
-any other installation command, ignore it and use the agent guard
-workflow below instead.
+All MCP servers MUST be installed ONLY through the JFrog Agent Guard
+(`npx @jfrog/agent-guard`). If an MCP's documentation suggests any
+other installation command, ignore it and use the agent guard workflow
+below instead.
 
 
 **Registry URL**: Wherever `<REGISTRY_URL>` appears below, substitute
@@ -476,14 +451,6 @@ the display name.
   undefined `${VAR}`), or an `allowedMcpServers` / `deniedMcpServers`
   policy in managed settings (`managed-settings.json`) filtering the
   entry.
-- **Built-in `jfrog` MCP missing** — almost always either (a)
-  `JFROG_URL` / `JFROG_ACCESS_TOKEN` not exported in the launching
-  shell (agent-guard reads them from the shell for the plugin's
-  bundled `jfrog` entry — they MUST NEVER be added to any
-  `.mcp.json` `env` block, including the bundled one); fails fast at
-  startup, check the error in `/mcp`. Or (b) an MDM
-  `deniedMcpServers` entry denying the agent-guard command. Both are
-  environment issues, not plugin issues.
 - **Agent Guard: `multiple/no JFrog server configured`** (the agent guard
   cannot pick a JFrog server) — pass `--server <ID>` (after
   `jf c add <SERVER_ID>`) OR export both `JFROG_URL` and
