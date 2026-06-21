@@ -8,7 +8,6 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 | Component | Feature | Description |
 | --- | --- | --- |
-| **MCP** | JFrog MCP (always-on) | Built-in JFrog MCP routed through `@jfrog/agent-guard` to `${JFROG_URL}/mcp`. Always available, not subject to AI Catalog policy — see [JFrog MCP](#jfrog-mcp). |
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
@@ -92,15 +91,6 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Is `lodash@4.17.21` safe to install?" | Checks JFrog Public Catalog signals and curation policy for the package. |
 | "Is this Maven package approved for use?" | Checks curation entitlement and policy for the requested package. |
 | "Download `requests` via JFrog." | Resolves the package through an Artifactory remote cache or curation-aware package manager. |
-
-### JFrog MCP
-
-The plugin ships a built-in `jfrog` MCP registered in `.mcp.json`. Claude
-Code launches it automatically as `npx @jfrog/agent-guard` with
-`_JF_ARGS=mcp=jfrog-mcp`. agent-guard recognizes that shape, skips the AI
-Catalog, and connects directly to `${JFROG_URL}/mcp` with
-`Authorization: Bearer ${JFROG_ACCESS_TOKEN}` (both env vars are listed
-under [Authentication](#authentication)).
 
 ### MCP server management (Agent Guard)
 
