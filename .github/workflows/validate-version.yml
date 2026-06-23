@@ -1,0 +1,21 @@
+name: Validate version
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          VERSION=$(cat VERSION)
+          PLUGIN_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
+          if [ "$VERSION" != "$PLUGIN_VERSION" ]; then
+            echo "::error::Version mismatch: VERSION=$VERSION but .claude-plugin/plugin.json.version=$PLUGIN_VERSION"
+            exit 1
+          fi
+          echo "All versions consistent: $VERSION"
