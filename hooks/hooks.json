@@ -5,6 +5,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-session-start.mjs\" package-guard",
+            "timeout": 7,
+            "statusMessage": "Routing package installs through JFrog Artifactory…"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs\"",
             "timeout": 7
           }
