@@ -52,7 +52,15 @@ Or pre-deploy that file before the first session. See [configure-package-guard](
 node ~/.jfrog/claude-plugin-beta/scripts/install-beta.mjs --uninstall
 ```
 
-Re-install marketplace plugin with `/plugin install jfrog` if needed.
+This runs `claude plugin uninstall jfrog@jfrog-beta`, `claude plugin marketplace remove jfrog-beta`, clears the plugin cache, and removes `enabledPlugins` entries from `~/.claude/settings.json`.
+
+Then optionally delete the clone:
+
+```bash
+rm -rf ~/.jfrog/claude-plugin-beta
+```
+
+Re-install the public marketplace plugin with `/plugin install jfrog` if needed.
 
 ## Local development (contributors)
 
@@ -75,10 +83,21 @@ Pin recorded in `.github/scripts/sync-agent-hooks-vendor.json`.
 
 ## What install-beta.mjs does
 
+**Install**
+
 1. Runs `claude plugin marketplace add <repo-path>` (requires `.claude-plugin/marketplace.json`)
 2. Runs `claude plugin install jfrog@jfrog-beta`
 3. Sets `enabledPlugins["jfrog@jfrog-beta"] = true` in `~/.claude/settings.json`
 4. Removes stale **manual** package-guard hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
 5. Backs up settings before any edit
 
-Does **not** use `jfrog@/absolute/path` — that format is ignored by Claude Code.
+**Uninstall (`--uninstall`)**
+
+1. Runs `claude plugin uninstall jfrog@jfrog-beta -y`
+2. Runs `claude plugin marketplace remove jfrog-beta`
+3. Deletes `~/.claude/plugins/cache/jfrog-beta/` if present
+4. Removes all `jfrog@…` keys from `enabledPlugins` (including legacy absolute-path keys)
+5. Removes stale manual package-guard hooks
+6. Suggests `rm -rf <clone-path>` to delete the git clone (not run automatically)
+
+Does **not** remove `~/.jfrog/agents.json` (your config; keep or edit manually).

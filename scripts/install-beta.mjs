@@ -9,7 +9,7 @@
 // Requires `claude` on PATH (Claude Code CLI). Sets enabledPlugins["jfrog@jfrog-beta"].
 // Removes stale manual package-guard hooks from jfrog-agent-hooks install-local.mjs.
 
-import { readFile, writeFile, mkdir, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, access, rm } from "node:fs/promises";
 import { constants as FS } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -21,7 +21,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO = path.resolve(HERE, "..");
 const SETTINGS = path.join(homedir(), ".claude", "settings.json");
 const PLUGIN_NAME = "jfrog";
+const DEFAULT_CLONE = path.join(homedir(), ".jfrog", "claude-plugin-beta");
+const PLUGINS_DIR = path.join(homedir(), ".claude", "plugins");
+
 const DEFAULT_MARKETPLACE = "jfrog-beta";
+
+// Legacy install-beta wrote absolute paths — remove on uninstall too.
+function isJfrogPluginKey(key) {
+  return key === PLUGIN_NAME || key.startsWith(`${PLUGIN_NAME}@`);
+}
 
 const MANUAL_HOOK_MARKERS = [
   "cursor-session-start.mjs",
@@ -137,7 +145,7 @@ function stripManualSessionStart(cfg) {
 function removePluginKeys(enabledPlugins) {
   let changed = false;
   for (const key of Object.keys(enabledPlugins)) {
-    if (key === PLUGIN_NAME || key.startsWith(`${PLUGIN_NAME}@`)) {
+    if (isJfrogPluginKey(key)) {
       delete enabledPlugins[key];
       changed = true;
     }
@@ -145,20 +153,72 @@ function removePluginKeys(enabledPlugins) {
   return changed;
 }
 
+function shortPath(p) {
+  return p.replace(homedir(), "~");
+}
+
+async function removePluginCache(marketplace, dryRun) {
+  const cacheDir = path.join(PLUGINS_DIR, "cache", marketplace);
+  if (!(await exists(cacheDir))) return false;
+  if (dryRun) {
+    console.log(`  [dry-run] rm -rf ${shortPath(cacheDir)}`);
+    return true;
+  }
+  await rm(cacheDir, { recursive: true, force: true });
+  console.log(`  removed cache: ${shortPath(cacheDir)}`);
+  return true;
+}
+
+async function cmdUninstall(o, cfg, marketplace, key) {
+  if (!o.skipCli) {
+    console.log("\nclaude plugin uninstall …");
+    runClaude(["plugin", "uninstall", key, "-y"], o.dryRun);
+
+    console.log("claude plugin marketplace remove …");
+    runClaude(["plugin", "marketplace", "remove", marketplace], o.dryRun);
+  }
+
+  console.log("plugin cache …");
+  await removePluginCache(marketplace, o.dryRun);
+
+  const settingsChanged = removePluginKeys(cfg.enabledPlugins) || stripManualSessionStart(cfg);
+  if (settingsChanged || !o.dryRun) {
+    await backup(SETTINGS, o.dryRun);
+    await writeJson(SETTINGS, cfg, o.dryRun);
+  }
+
+  console.log("\nuninstalled jfrog beta plugin, marketplace, and cache.");
+  console.log("restart Claude Code or run /reload-plugins.");
+
+  const cloneHint = (await exists(o.repoPath)) ? o.repoPath : DEFAULT_CLONE;
+  if (await exists(cloneHint)) {
+    console.log(`\noptional — remove the cloned repo:\n  rm -rf ${shortPath(cloneHint)}`);
+  }
+}
+
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   const manifest = path.join(o.repoPath, ".claude-plugin", "plugin.json");
   const marketplaceFile = path.join(o.repoPath, ".claude-plugin", "marketplace.json");
-  if (!(await exists(manifest))) {
-    throw new Error(`not a Claude plugin root (missing ${manifest})`);
-  }
-  if (!(await exists(marketplaceFile))) {
-    throw new Error(
-      `missing ${marketplaceFile} — pull latest feature/package-guard (marketplace manifest required)`,
-    );
+
+  if (o.uninstall) {
+    if (!(await exists(manifest)) && o.repoPath === DEFAULT_REPO) {
+      o.repoPath = (await exists(DEFAULT_CLONE)) ? DEFAULT_CLONE : o.repoPath;
+    }
+  } else {
+    if (!(await exists(manifest))) {
+      throw new Error(`not a Claude plugin root (missing ${manifest})`);
+    }
+    if (!(await exists(marketplaceFile))) {
+      throw new Error(
+        `missing ${marketplaceFile} — pull latest feature/package-guard (marketplace manifest required)`,
+      );
+    }
   }
 
-  const marketplace = await readMarketplaceName(o.repoPath);
+  const marketplace = (await exists(marketplaceFile))
+    ? await readMarketplaceName(o.repoPath)
+    : DEFAULT_MARKETPLACE;
   const key = pluginKey(marketplace);
   const cfg = (await readJson(SETTINGS, {})) ?? {};
   cfg.enabledPlugins ??= {};
@@ -169,19 +229,7 @@ async function main() {
   console.log(`settings:     ${SETTINGS}`);
 
   if (o.uninstall) {
-    if (!o.skipCli && !o.dryRun) {
-      console.log("\nclaude plugin uninstall …");
-      runClaude(["plugin", "uninstall", key, "-y"], o.dryRun);
-    }
-    const a = removePluginKeys(cfg.enabledPlugins);
-    const b = stripManualSessionStart(cfg);
-    if (!a && !b && o.dryRun) {
-      console.log("nothing to remove.");
-      return;
-    }
-    await backup(SETTINGS, o.dryRun);
-    await writeJson(SETTINGS, cfg, o.dryRun);
-    console.log("uninstalled beta plugin and removed manual package-guard hooks.");
+    await cmdUninstall(o, cfg, marketplace, key);
     return;
   }
 
