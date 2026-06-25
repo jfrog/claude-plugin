@@ -14,12 +14,18 @@ Not for public marketplace yet — share this branch with co-workers for dogfood
 
 ## One-command install (peers)
 
+Requires the [Claude Code CLI](https://code.claude.com/docs) (`claude` on PATH).
+
 ```bash
 git clone -b feature/package-guard --depth 1 https://github.com/jfrog/claude-plugin.git ~/.jfrog/claude-plugin-beta && \
   node ~/.jfrog/claude-plugin-beta/scripts/install-beta.mjs --repo-path ~/.jfrog/claude-plugin-beta
 ```
 
+This registers the local marketplace (`.claude-plugin/marketplace.json`), runs `claude plugin install jfrog@jfrog-beta`, and sets `enabledPlugins` in `~/.claude/settings.json`.
+
 Then restart Claude Code (or `/reload-plugins`) and open a **new session**.
+
+**Quick dev (no install):** `claude --plugin-dir ~/.jfrog/claude-plugin-beta`
 
 ### Enable Package Guard
 
@@ -69,7 +75,10 @@ Pin recorded in `.github/scripts/sync-agent-hooks-vendor.json`.
 
 ## What install-beta.mjs does
 
-1. Sets `enabledPlugins["jfrog@<absolute-path>"] = true` in `~/.claude/settings.json`
-2. Removes stale **manual** package-guard hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
-3. Backs up settings before any edit
-4. Does **not** touch boost or other third-party hooks
+1. Runs `claude plugin marketplace add <repo-path>` (requires `.claude-plugin/marketplace.json`)
+2. Runs `claude plugin install jfrog@jfrog-beta`
+3. Sets `enabledPlugins["jfrog@jfrog-beta"] = true` in `~/.claude/settings.json`
+4. Removes stale **manual** package-guard hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
+5. Backs up settings before any edit
+
+Does **not** use `jfrog@/absolute/path` — that format is ignored by Claude Code.

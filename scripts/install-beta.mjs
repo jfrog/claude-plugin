@@ -1,26 +1,27 @@
 #!/usr/bin/env node
-// Enable this plugin clone in Claude Code (~/.claude/settings.json).
+// Register and install the JFrog beta plugin via Claude Code's marketplace flow.
 //
 // Usage:
 //   node scripts/install-beta.mjs
 //   node scripts/install-beta.mjs --repo-path /path/to/claude-plugin
 //   node scripts/install-beta.mjs --uninstall
 //
-// Sets enabledPlugins["jfrog@<absolute-plugin-path>"] = true.
+// Requires `claude` on PATH (Claude Code CLI). Sets enabledPlugins["jfrog@jfrog-beta"].
 // Removes stale manual package-guard hooks from jfrog-agent-hooks install-local.mjs.
-// Does not remove boost or other third-party hooks.
 
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { constants as FS } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO = path.resolve(HERE, "..");
 const SETTINGS = path.join(homedir(), ".claude", "settings.json");
 const PLUGIN_NAME = "jfrog";
+const DEFAULT_MARKETPLACE = "jfrog-beta";
 
 const MANUAL_HOOK_MARKERS = [
   "cursor-session-start.mjs",
@@ -31,17 +32,15 @@ const MANUAL_HOOK_MARKERS = [
 ];
 
 function parseArgs(argv) {
-  const o = { repoPath: DEFAULT_REPO, uninstall: false, dryRun: false };
+  const o = { repoPath: DEFAULT_REPO, uninstall: false, dryRun: false, skipCli: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--repo-path") o.repoPath = path.resolve(argv[++i] ?? "");
     else if (a === "--uninstall") o.uninstall = true;
     else if (a === "--dry-run") o.dryRun = true;
-    else if (a === "-h" || a === "--help") {
-      printUsage(0);
-    } else {
-      printUsage(2, `Unknown argument: ${a}`);
-    }
+    else if (a === "--skip-cli") o.skipCli = true;
+    else if (a === "-h" || a === "--help") printUsage(0);
+    else printUsage(2, `Unknown argument: ${a}`);
   }
   return o;
 }
@@ -50,7 +49,10 @@ function printUsage(code, msg) {
   if (msg) console.error(msg + "\n");
   console.log(`Usage:
   node scripts/install-beta.mjs [--repo-path PATH] [--dry-run]
-  node scripts/install-beta.mjs --uninstall [--dry-run]`);
+  node scripts/install-beta.mjs --uninstall [--dry-run]
+
+Options:
+  --skip-cli   Only update settings.json (skip claude plugin marketplace/install)`);
   process.exit(code);
 }
 
@@ -94,8 +96,27 @@ async function writeJson(file, data, dryRun) {
   await writeFile(file, text);
 }
 
-function pluginKey(repoPath) {
-  return `${PLUGIN_NAME}@${repoPath}`;
+async function readMarketplaceName(repoPath) {
+  const marketplacePath = path.join(repoPath, ".claude-plugin", "marketplace.json");
+  const data = await readJson(marketplacePath, null);
+  if (data?.name && typeof data.name === "string") return data.name;
+  return DEFAULT_MARKETPLACE;
+}
+
+function pluginKey(marketplace) {
+  return `${PLUGIN_NAME}@${marketplace}`;
+}
+
+function runClaude(args, dryRun) {
+  const cmd = ["claude", ...args].join(" ");
+  if (dryRun) {
+    console.log(`  [dry-run] ${cmd}`);
+    return { status: 0, stdout: "", stderr: "" };
+  }
+  const result = spawnSync("claude", args, { encoding: "utf8" });
+  const out = (result.stdout ?? "") + (result.stderr ?? "");
+  if (out.trim()) process.stdout.write(out.endsWith("\n") ? out : `${out}\n`);
+  return result;
 }
 
 function isManualHook(entry) {
@@ -127,42 +148,72 @@ function removePluginKeys(enabledPlugins) {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   const manifest = path.join(o.repoPath, ".claude-plugin", "plugin.json");
+  const marketplaceFile = path.join(o.repoPath, ".claude-plugin", "marketplace.json");
   if (!(await exists(manifest))) {
     throw new Error(`not a Claude plugin root (missing ${manifest})`);
   }
+  if (!(await exists(marketplaceFile))) {
+    throw new Error(
+      `missing ${marketplaceFile} — pull latest feature/package-guard (marketplace manifest required)`,
+    );
+  }
 
+  const marketplace = await readMarketplaceName(o.repoPath);
+  const key = pluginKey(marketplace);
   const cfg = (await readJson(SETTINGS, {})) ?? {};
   cfg.enabledPlugins ??= {};
 
-  console.log(`plugin root: ${o.repoPath}`);
-  console.log(`settings:    ${SETTINGS}`);
+  console.log(`plugin root:  ${o.repoPath}`);
+  console.log(`marketplace:  ${marketplace}`);
+  console.log(`plugin key:   ${key}`);
+  console.log(`settings:     ${SETTINGS}`);
 
   if (o.uninstall) {
+    if (!o.skipCli && !o.dryRun) {
+      console.log("\nclaude plugin uninstall …");
+      runClaude(["plugin", "uninstall", key, "-y"], o.dryRun);
+    }
     const a = removePluginKeys(cfg.enabledPlugins);
     const b = stripManualSessionStart(cfg);
-    if (!a && !b) {
+    if (!a && !b && o.dryRun) {
       console.log("nothing to remove.");
       return;
     }
     await backup(SETTINGS, o.dryRun);
     await writeJson(SETTINGS, cfg, o.dryRun);
-    console.log("uninstalled beta plugin entry and manual package-guard hooks.");
+    console.log("uninstalled beta plugin and removed manual package-guard hooks.");
     return;
   }
 
-  const key = pluginKey(o.repoPath);
+  if (!o.skipCli) {
+    console.log("\nclaude plugin marketplace add …");
+    const add = runClaude(["plugin", "marketplace", "add", o.repoPath], o.dryRun);
+    if (add.status !== 0 && !o.dryRun) {
+      throw new Error("claude plugin marketplace add failed (is `claude` on PATH?)");
+    }
+
+    console.log("claude plugin install …");
+    const inst = runClaude(["plugin", "install", key], o.dryRun);
+    if (inst.status !== 0 && !o.dryRun) {
+      throw new Error(`claude plugin install ${key} failed`);
+    }
+  }
+
   removePluginKeys(cfg.enabledPlugins);
   cfg.enabledPlugins[key] = true;
   stripManualSessionStart(cfg);
 
   await backup(SETTINGS, o.dryRun);
   await writeJson(SETTINGS, cfg, o.dryRun);
-  console.log(`enabled: ${key}`);
+
+  console.log(`\nenabled: ${key}`);
   console.log("next: restart Claude Code or run /reload-plugins, then start a new session.");
+  console.log("verify:  claude plugin list   or   /plugin inside Claude Code");
+  console.log("skills:  /jfrog, /jfrog-package-safety-and-download, /jfrog-setup-package-managers");
   console.log("enable package-guard: set packageGuard.enabled to true in ~/.jfrog/agents.json");
 }
 
 main().catch((err) => {
-  console.error(`install-beta failed: ${err?.stack ?? err}`);
+  console.error(`install-beta failed: ${err?.message ?? err}`);
   process.exit(1);
 });
