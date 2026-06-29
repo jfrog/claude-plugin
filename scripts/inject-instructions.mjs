@@ -88,9 +88,15 @@ if (!process.env.JFROG_URL) {
   }));
   process.exit(0);
 } else if (process.env.JFROG_URL.endsWith("/")) {
-  // The settings check normalizes the trailing slash, so Agent Guard and its
-  // instruction injection still work — warn to stderr but don't exit.
-  log("JFROG_URL has a trailing slash. This produces a double-slash in the MCP URL and may cause the JFrog MCP server to fail — remove the trailing slash and restart.");
+  const trailingSlashWarning = "JFROG_URL has a trailing slash. This produces a double-slash in the MCP URL and will silently fail — remove the trailing slash and restart.";
+  log(trailingSlashWarning);
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: `IMPORTANT: Immediately tell the user: "${trailingSlashWarning}"`,
+    },
+  }));
+  process.exit(0);
 }
 
 if (forceEnabled) {
