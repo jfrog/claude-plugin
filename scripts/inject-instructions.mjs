@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 // Logs go to stderr; stdout is reserved for the hook JSON payload.
 const debugEnabled = process.env.JF_AGENT_GUARD_DEBUG === "true";
-const log = (message) => console.error(`[jfrog-agent-guard] ${message}`);
+const log = (message) => console.error(message);
 const debug = (message) => {
   if (debugEnabled) log(message);
 };
@@ -73,12 +73,23 @@ async function isAgentGuardEnabledViaSettings() {
 if (forceDisabled) {
   debug("Force-disable flag is set.");
   process.exit(0);
-} else if (forceEnabled) {
+}
+
+// Validate JFROG_URL early to surface misconfigurations before the MCP server
+// attempts to connect and fails with a confusing DNS or double-slash error.
+if (!process.env.JFROG_URL && !process.env.JF_URL) {
+  log("JFROG_URL is not set. The JFrog MCP server will be unreachable — set JFROG_URL to your Artifactory base URL (e.g. https://mycompany.jfrog.io) and restart.");
+} else if (process.env.JFROG_URL?.endsWith("/")) {
+  log("JFROG_URL has a trailing slash. This produces a double-slash in the MCP URL and will silently fail — remove the trailing slash and restart.");
+}
+
+if (forceEnabled) {
   debug("Force-enable flag is set.");
 } else if (!(await isAgentGuardEnabledViaSettings())) {
   debug("Agent Guard not enabled; exiting without injecting instructions");
   process.exit(0);
 }
+
 debug("Injecting instructions");
 
 // Derive the plugin root from this script's own location instead of relying
