@@ -73,13 +73,13 @@ claude --plugin-dir .
 
 ### Re-sync from jfrog-agent-hooks
 
-When `jfrog-agent-hooks` changes, refresh vendored slices:
+When `jfrog-agent-hooks` changes, refresh the vendored bundle:
 
 ```bash
 JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
 ```
 
-Pin recorded in `.github/scripts/sync-agent-hooks-vendor.json`.
+Replaces the whole `agent-hooks/` tree per `paths` in `.github/scripts/sync-agent-hooks-vendor.json`.
 
 ## What install-beta.mjs does
 

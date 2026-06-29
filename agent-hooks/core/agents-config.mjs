@@ -8,8 +8,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** jfrog-agent-hooks / plugins/jfrog root (parent of scripts/ and assets/). */
-const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+/** agent-hooks bundle root (parent of core/ and assets/). */
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const TEMPLATE_PATH = path.join(PLUGIN_ROOT, "assets", "agents-default.json");
 

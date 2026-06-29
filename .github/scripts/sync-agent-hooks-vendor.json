@@ -1,12 +1,5 @@
 {
   "repo": "github.jfrog.info/JFROG/jfrog-agent-hooks",
   "pin": "master",
-  "copies": [
-    { "src": "scripts/core", "dest": "scripts/core" },
-    { "src": "scripts/cursor-session-start.mjs", "dest": "scripts/cursor-session-start.mjs" },
-    { "src": "scripts/claude-session-start.mjs", "dest": "scripts/claude-session-start.mjs" },
-    { "src": "package-guard", "dest": "package-guard" },
-    { "src": "assets/agents-default.json", "dest": "assets/agents-default.json" },
-    { "src": "skill/jfrog-setup-package-managers", "dest": "skills/jfrog-setup-package-managers" }
-  ]
+  "paths": ["agent-hooks"]
 }

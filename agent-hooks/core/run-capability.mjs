@@ -14,8 +14,8 @@ import { setLogContext, createLogger } from "./logger.mjs";
 
 const log = createLogger("run-capability");
 
-/** jfrog-agent-hooks / plugins/jfrog root (parent of scripts/ and package-guard/). */
-const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+/** agent-hooks bundle root (parent of core/ and package-guard/). */
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Shipped capabilities — add a name here; folder layout must match convention. */
 const ALLOWLIST = new Set(["package-guard"]);

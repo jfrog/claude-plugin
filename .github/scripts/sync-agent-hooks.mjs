@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Vendors agent-hooks slices from jfrog-agent-hooks into this plugin.
+// Vendors agent-hooks bundle from jfrog-agent-hooks into this plugin.
 //
 // Usage:
 //   JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
 //
 // Defaults JFROG_AGENT_HOOKS_PATH to ../jfrog-agent-hooks (sibling clone).
-// Reads copy list from sync-agent-hooks-vendor.json.
+// Reads paths from sync-agent-hooks-vendor.json.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -24,28 +24,23 @@ async function fileExists(p) {
   }
 }
 
-async function copyEntry(srcRoot, destRoot, entry) {
-  const src = path.join(srcRoot, entry.src);
-  const dest = path.join(destRoot, entry.dest);
-  if (!(await fileExists(src))) {
-    throw new Error(`missing upstream path: ${entry.src}`);
+async function copyPath(fromDir, toDir, relativePath) {
+  const from = path.join(fromDir, relativePath);
+  const to = path.join(toDir, relativePath);
+  if (!(await fileExists(from))) {
+    throw new Error(`path missing in upstream: ${relativePath}`);
   }
-  await fs.rm(dest, { recursive: true, force: true });
-  await fs.mkdir(path.dirname(dest), { recursive: true });
-  const stat = await fs.stat(src);
-  if (stat.isDirectory()) {
-    await fs.cp(src, dest, { recursive: true });
-  } else {
-    await fs.copyFile(src, dest);
-  }
-  console.log(`  ${entry.src} -> ${path.relative(repoRoot, dest)}`);
+  await fs.rm(to, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(to), { recursive: true });
+  await fs.cp(from, to, { recursive: true });
+  console.log(`  ${relativePath} -> ${path.relative(process.cwd(), to)}`);
 }
 
 async function main() {
   const vendor = JSON.parse(await fs.readFile(vendorPath, "utf8"));
-  const copies = vendor.copies;
-  if (!Array.isArray(copies) || copies.length === 0) {
-    throw new Error(`${vendorPath} must define a non-empty copies array`);
+  const paths = vendor.paths;
+  if (!Array.isArray(paths) || paths.length === 0) {
+    throw new Error(`${vendorPath} must define a non-empty paths array`);
   }
 
   const hooksRoot =
@@ -58,9 +53,12 @@ async function main() {
     );
   }
 
+  const destPrefix = (vendor.dest_prefix ?? "").replace(/^\/+|\/+$/g, "");
+  const destRoot = destPrefix ? path.join(repoRoot, destPrefix) : repoRoot;
+
   console.log(`--- sync from ${hooksRoot} (pin: ${vendor.pin ?? "local"}) ---`);
-  for (const entry of copies) {
-    await copyEntry(hooksRoot, repoRoot, entry);
+  for (const rel of paths) {
+    await copyPath(hooksRoot, destRoot, rel);
   }
   console.log("done.");
 }

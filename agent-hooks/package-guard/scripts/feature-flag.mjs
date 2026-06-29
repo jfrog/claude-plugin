@@ -24,9 +24,9 @@
 
 import process from "node:process";
 
-import { createLogger } from "../../scripts/core/logger.mjs";
-import { getAgentsConfigSection } from "../../scripts/core/agents-config.mjs";
-import { getPlatformIdentity, identityLabel } from "../../scripts/core/jf-identity.mjs";
+import { createLogger } from "../../core/logger.mjs";
+import { getAgentsConfigSection } from "../../core/agents-config.mjs";
+import { getPlatformIdentity, identityLabel } from "../../core/jf-identity.mjs";
 
 const log = createLogger("feature-flag");
 

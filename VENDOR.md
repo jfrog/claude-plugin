@@ -24,3 +24,24 @@ node .github/scripts/sync-skills.mjs
 ```
 
 The script reads its sibling [`sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json), downloads the pinned upstream tarball from `codeload.github.com`, and replaces the directories listed in `paths` (today: `skills/`).
+
+---
+
+# Vendored agent-hooks
+
+The `agent-hooks/` bundle is vendored from **jfrog-agent-hooks** (GHE) and committed to the beta branch.
+
+| | |
+| --- | --- |
+| **Repository** | `github.jfrog.info/JFROG/jfrog-agent-hooks` |
+| **Pinned release** | see `pin` in [`.github/scripts/sync-agent-hooks-vendor.json`](.github/scripts/sync-agent-hooks-vendor.json) |
+
+The bundle contains harness runners (`core/`, `*-session-start.mjs`), the `package-guard/` capability, and `assets/agents-default.json`.
+
+## Refreshing
+
+```bash
+JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
+```
+
+The script reads `paths` from `sync-agent-hooks-vendor.json` (today: `["agent-hooks"]`) and replaces the whole `agent-hooks/` tree.

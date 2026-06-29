@@ -19,7 +19,7 @@ import {
   prepareSessionResolve,
   PACKAGE_TYPES,
 } from "./resolver.mjs";
-import { createLogger } from "../../scripts/core/logger.mjs";
+import { createLogger } from "../../core/logger.mjs";
 
 const log = createLogger("render-instruction");
 
