@@ -1,5 +1,7 @@
 {
   "repo": "github.jfrog.info/JFROG/jfrog-agent-hooks",
   "pin": "master",
-  "paths": ["agent-hooks"]
+  "paths": [
+    "modules"
+  ]
 }

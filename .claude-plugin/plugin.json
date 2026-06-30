@@ -21,7 +21,7 @@
     "artifacts",
     "curation",
     "agent-guard",
-    "package-guard",
+    "package-resolution",
     "ai-catalog"
   ]
 }

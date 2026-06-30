@@ -45,9 +45,9 @@ From a clone of this repository (repository root **is** the plugin root):
 claude --plugin-dir /path/to/claude-plugin
 ```
 
-### Package Guard beta (internal)
+### Agent Package Resolution beta (internal)
 
-See [`PACKAGE-GUARD-BETA.md`](PACKAGE-GUARD-BETA.md) for the `feature/package-guard` branch — bundled Package Guard + one-command peer install.
+See [`AGENT-PACKAGE-RESOLUTION-BETA.md`](AGENT-PACKAGE-RESOLUTION-BETA.md) for the `feature/package-guard` branch — bundled Agent Package Resolution + one-command peer install.
 
 ---
 

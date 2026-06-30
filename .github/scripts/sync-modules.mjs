@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Vendors agent-hooks bundle from jfrog-agent-hooks into this plugin.
+// Vendors modules bundle from jfrog-agent-hooks into this plugin.
 //
 // Usage:
-//   JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
+//   JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-modules.mjs
 //
 // Defaults JFROG_AGENT_HOOKS_PATH to ../jfrog-agent-hooks (sibling clone).
-// Reads paths from sync-agent-hooks-vendor.json.
+// Reads paths from sync-modules-vendor.json.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
-const vendorPath = path.join(scriptDir, "sync-agent-hooks-vendor.json");
+const vendorPath = path.join(scriptDir, "sync-modules-vendor.json");
 
 async function fileExists(p) {
   try {

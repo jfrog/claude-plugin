@@ -1,7 +1,7 @@
-# `.jfrog/local/package-guard.json` — Workspace Config File
+# `.jfrog/local/package-resolution.json` — Workspace Binding File
 
-This skill records workspace repo overrides in a file the session-start hook
-reads to override org defaults from `~/.jfrog/skills-cache/package-guard.json`.
+This skill records workspace repo bindings in a file the session-start hook
+reads to override org defaults from `~/.jfrog/skills-cache/package-resolution.json`.
 
 The file is the **decisions** record, not a credential store. Tokens live
 in `jf config` and in PM-native files written by `jf setup` itself.
@@ -9,7 +9,7 @@ in `jf config` and in PM-native files written by `jf setup` itself.
 ## Location
 
 ```
-<workspace-root>/.jfrog/local/package-guard.json
+<workspace-root>/.jfrog/local/package-resolution.json
 ```
 
 `<workspace-root>` is the directory the user opened in the IDE — **not**
@@ -82,7 +82,7 @@ JSON must use 2-space indent.
 
 | Consumer | What it reads |
 |---|---|
-| `package-guard` session hook | `repositories` — first workspace root with this file (multi-root) |
+| Session-start hook | `repositories` — first workspace root with this file (multi-root) |
 | This skill | Round-trip load → diff → confirm → write |
 | `opencode-jfrog-plugin` | **Not updated** — out of scope until it reads this file |
 

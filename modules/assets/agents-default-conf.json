@@ -1,6 +1,6 @@
 {
   "logLevel": "info",
-  "packageGuard": {
+  "packageResolution": {
     "enabled": false,
     "verifyRepos": true,
     "cacheTtlDays": 7,

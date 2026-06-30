@@ -14,11 +14,11 @@ import { setLogContext, createLogger } from "./logger.mjs";
 
 const log = createLogger("run-capability");
 
-/** agent-hooks bundle root (parent of core/ and package-guard/). */
+/** modules bundle root (parent of core/ and package-resolution/). */
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Shipped capabilities — add a name here; folder layout must match convention. */
-const ALLOWLIST = new Set(["package-guard"]);
+const ALLOWLIST = new Set(["package-resolution"]);
 
 /**
  * @param {string} name — capability id

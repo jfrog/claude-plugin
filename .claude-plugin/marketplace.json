@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "jfrog-beta",
-  "description": "Internal beta marketplace for the JFrog Claude plugin (package-guard branch).",
+  "description": "Internal beta marketplace for the JFrog Claude plugin (Agent Package Resolution).",
   "owner": {
     "name": "JFrog Ltd.",
     "email": "devrel@jfrog.com"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "jfrog",
-      "description": "JFrog Platform, Package Guard, Agent Guard, and JFrog skills — internal beta.",
+      "description": "JFrog Platform, Agent Package Resolution, Agent Guard, and JFrog skills \u2014 internal beta.",
       "author": {
         "name": "JFrog Ltd.",
         "email": "devrel@jfrog.com"

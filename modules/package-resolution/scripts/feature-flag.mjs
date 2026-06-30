@@ -3,11 +3,10 @@
 //
 // Resolution order (first match wins):
 //
-//   1. JFROG_PACKAGE_GUARD_DISABLE=1       → mode="off" (env kill switch;
-//      a future JFROG_PACKAGE_GUARD_FORCE_* may override this)
-//   2. packageGuard.enabled !== true in     → mode="off" (file-primary gate;
-//      ~/.jfrog/agents.json                    default off in shipped template)
-//   3. jf config (via jf-identity)          → mode="active" when identity is
+//   1. JF_AGENT_PACKAGE_RESOLUTION_DISABLE=1 → mode="off" (env kill switch)
+//   2. packageResolution.enabled !== true in      → mode="off" (file-primary gate;
+//      ~/.jfrog/agents-conf.json                   default off in shipped template)
+//   3. jf config (via jf-identity)                → mode="active" when identity is
 //      usable; otherwise mode="enforce" with a `cause` (jf-not-installed /
 //      jf-not-configured) so the session hook can inject a targeted,
 //      remediation-focused advisory notice.
@@ -20,7 +19,7 @@
 //               not a hard block — real enforcement is durable PM config
 //               (jf setup) + server-side Curation.
 //
-// Repo keys come from agents.json defaultGlobalRepos (resolver.mjs).
+// Repo keys come from agents-conf.json defaultGlobalRepos (resolver.mjs).
 
 import process from "node:process";
 
@@ -31,15 +30,15 @@ import { getPlatformIdentity, identityLabel } from "../../core/jf-identity.mjs";
 const log = createLogger("feature-flag");
 
 function isEnvDisabled() {
-  return process.env.JFROG_PACKAGE_GUARD_DISABLE === "1";
+  return process.env.JF_AGENT_PACKAGE_RESOLUTION_DISABLE === "1";
 }
 
 function isEnabledInConfig() {
-  const pg = getAgentsConfigSection("packageGuard");
-  return pg?.enabled === true;
+  const pr = getAgentsConfigSection("packageResolution");
+  return pr?.enabled === true;
 }
 
-export async function isPackageGuardEnabled() {
+export async function isPackageResolutionEnabled() {
   if (isEnvDisabled()) {
     log.debug("off", { reason: "DISABLE" });
     return { mode: "off", reason: "DISABLE", identity: "none", cause: "ok" };

@@ -9,8 +9,9 @@
 // Errors from the logger itself are swallowed — a misbehaving log MUST NOT
 // break the hook (otherwise the agent session breaks).
 //
-// Log level: `logLevel` in ~/.jfrog/agents.json (default info).
-// Test isolation only: JFROG_AGENT_HOOKS_LOG_FILE overrides the log path.
+// Log level: `logLevel` in ~/.jfrog/agents-conf.json (default info).
+// Undocumented; for test isolation only — not a customer-facing control:
+// JFROG_AGENT_HOOKS_LOG_FILE overrides the log path.
 //
 // Levels:
 //   silent  no output at all

@@ -1,4 +1,4 @@
-// Render the package-guard session-start instruction text.
+// Render the package-resolution session-start instruction text.
 //
 // Extracted from the poc `inject-instructions.mjs` main(): this is the pure,
 // harness-agnostic renderer. It returns a markdown STRING (no stdin/stdout, no
@@ -25,8 +25,8 @@ const log = createLogger("render-instruction");
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(here, "../templates");
-const ACTIVE_TEMPLATE = "package-guard.md";
-const ENFORCE_TEMPLATE = "package-guard-unconfigured.md";
+const ACTIVE_TEMPLATE = "package-resolution.md";
+const ENFORCE_TEMPLATE = "package-resolution-unconfigured.md";
 
 // Prose fragment for the enforce-notice {{CAUSE_REMEDIATION}} placeholder.
 function causeRemediation(cause) {

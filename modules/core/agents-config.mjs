@@ -1,4 +1,4 @@
-// Local admin config at ~/.jfrog/agents.json (shipped template: assets/agents-default.json).
+// Local admin config at ~/.jfrog/agents-conf.json (shipped template: assets/agents-default-conf.json).
 //
 // Read-only helpers — no network. Session starters call ensureAgentsConfigScaffold()
 // before capabilities run so first-time installs get a writable config file.
@@ -8,10 +8,10 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** agent-hooks bundle root (parent of core/ and assets/). */
+/** modules bundle root (parent of core/ and assets/). */
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const TEMPLATE_PATH = path.join(PLUGIN_ROOT, "assets", "agents-default.json");
+const TEMPLATE_PATH = path.join(PLUGIN_ROOT, "assets", "agents-default-conf.json");
 
 const DEFAULT_LOG_LEVEL = "info";
 const DEFAULT_CACHE_TTL_DAYS = 7;
@@ -22,7 +22,7 @@ let memoizedForPath = null;
 let loadMeta = { source: "missing", parseFailed: false, path: "" };
 
 function agentsConfigPath() {
-  return path.join(homedir(), ".jfrog", "agents.json");
+  return path.join(homedir(), ".jfrog", "agents-conf.json");
 }
 
 function resetLoadMeta(configPath) {
@@ -30,7 +30,7 @@ function resetLoadMeta(configPath) {
 }
 
 /**
- * Copy the shipped template to ~/.jfrog/agents.json when missing.
+ * Copy the shipped template to ~/.jfrog/agents-conf.json when missing.
  * Never overwrites an existing file.
  */
 export function ensureAgentsConfigScaffold() {
@@ -118,7 +118,7 @@ export function agentsConfigLoadWarnings() {
   if (!loadMeta.parseFailed) return [];
   return [
     {
-      message: "agents.json unreadable; using shipped template defaults",
+      message: "agents-conf.json unreadable; using shipped template defaults",
       path: loadMeta.path,
     },
   ];
@@ -132,21 +132,24 @@ export function getAgentsConfigSection(name) {
   return section && typeof section === "object" ? section : null;
 }
 
-/** @returns {{ logLevel: string, packageGuard: object }} merged with documented defaults */
+/** @returns {{ logLevel: string, packageResolution: object }} merged with documented defaults */
 export function loadAgentsConfig() {
   const file = readAgentsConfigRaw() ?? {};
-  const pg = file.packageGuard && typeof file.packageGuard === "object" ? file.packageGuard : {};
+  const pr =
+    file.packageResolution && typeof file.packageResolution === "object"
+      ? file.packageResolution
+      : {};
   const defaultGlobalRepos =
-    pg.defaultGlobalRepos && typeof pg.defaultGlobalRepos === "object"
-      ? normalizeRepoMap(pg.defaultGlobalRepos)
+    pr.defaultGlobalRepos && typeof pr.defaultGlobalRepos === "object"
+      ? normalizeRepoMap(pr.defaultGlobalRepos)
       : {};
 
   return {
     logLevel: normalizeLogLevel(file.logLevel),
-    packageGuard: {
-      enabled: pg.enabled === true,
-      verifyRepos: pg.verifyRepos !== false,
-      cacheTtlDays: normalizeCacheTtlDays(pg.cacheTtlDays),
+    packageResolution: {
+      enabled: pr.enabled === true,
+      verifyRepos: pr.verifyRepos !== false,
+      cacheTtlDays: normalizeCacheTtlDays(pr.cacheTtlDays),
       defaultGlobalRepos,
     },
   };

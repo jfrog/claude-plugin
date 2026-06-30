@@ -1,4 +1,4 @@
-// Workspace-local repo overrides — `.jfrog/local/package-guard.json`
+// Workspace-local repo overrides — `.jfrog/local/package-resolution.json`
 // Schema: `{ "repositories": { "<pkgType>": "<repoKey>", ... } }` only.
 //
 // Multi-root: first root (in harness order) that has the file wins.
@@ -7,10 +7,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const WORKSPACE_CONFIG_FILE = "package-guard.json";
+export const WORKSPACE_CONFIG_FILE = "package-resolution.json";
 
 /**
- * First workspace root that has `.jfrog/local/package-guard.json`.
+ * First workspace root that has `.jfrog/local/package-resolution.json`.
  *
  * @param {string[]} workspaceRoots
  * @returns {{ root: string, configFile: string } | null}

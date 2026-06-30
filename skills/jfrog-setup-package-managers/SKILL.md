@@ -3,9 +3,9 @@ name: jfrog-setup-package-managers
 description: >-
   Use this skill when the user asks to set up, configure, bind, or connect a
   package manager (npm, pip, maven, gradle, go, docker, helm, …) to JFrog
-  Artifactory via `jf setup` and `.jfrog/local/package-guard.json`; when a
-  workspace manifest exists with no matching marker entry; or when a session
-  hook reports PM config missing. Skip when the marker already has the same
+  Artifactory via `jf setup` and `.jfrog/local/package-resolution.json`; when a
+  workspace manifest exists with no matching binding entry; or when a session
+  hook reports PM config missing. Skip when the binding already has the same
   repo key — the session hook reapplies each start. Do NOT discover or
   enumerate repositories; use resolver output only. On unresolved or failed
   setup, ask for a repo key with the failure verbatim — never switch servers.
@@ -15,27 +15,19 @@ metadata:
 
 # JFrog — Setup Package Managers for Artifactory
 
-Agent-driven half of `package-guard`: apply the session hook's repo pick
-via [`jf setup`](references/jf-setup-command.md), then record it in
-[`.jfrog/local/package-guard.json`](references/package-guard-config.md).
-`jf setup` writes PM-native config (`.npmrc`, `pip.conf`, …); the marker
+Apply the session hook's repo pick via [`jf setup`](references/jf-setup-command.md),
+then record it in [`.jfrog/local/package-resolution.json`](references/workspace-binding.md).
+`jf setup` writes PM-native config (`.npmrc`, `pip.conf`, …); the binding
 lets the hook re-apply on later sessions.
 
 ## Scope (this skill vs session hook)
 
-The **session-start hook** (package-guard) picks repo keys per package
-type, applies workspace overrides, injects the **"Resolved URLs for this
-session"** table, and refreshes the global cache. Do **not** resolve,
-list, or probe repositories.
+**Session-start hook:** resolves repo keys per package type, injects the
+"Resolved URLs for this session" table, refreshes the global cache. Do not
+re-resolve or probe repositories.
 
-**This skill** only:
-
-1. **Reads** repo keys — session table → workspace marker → global cache
-   (Step 2; details in [`cache-file.md`](references/cache-file.md)).
-2. **Runs** `jf setup <pm> --server-id … --repo …` to write PM config.
-3. **Persists** the workspace choice in `.jfrog/local/package-guard.json`.
-
-Later sessions re-apply via the hook automatically — no agent action needed.
+**This skill:** reads that output, runs `jf setup`, and persists the workspace
+binding at `.jfrog/local/package-resolution.json` when PM config is still missing.
 
 ## Prerequisites
 
@@ -53,21 +45,21 @@ or discovery (`jf api /artifactory/api/repositories`).
 
 - **Always pass `--repo` and `--server-id`** — omitting `--repo` fails when
   multiple repos match. See [`jf-setup-command.md`](references/jf-setup-command.md).
-- **`jf setup` overwrites PM config** without backup — skip PMs whose marker
+- **`jf setup` overwrites PM config** without backup — skip PMs whose binding
   already matches (Step 1, signal 2).
 - **Docker / Podman — prefix or stop.** `jf setup docker` writes creds only;
   bare `docker pull <img>` hits Docker Hub. Complete setup, then pull via
   `<host>/<repoKey>/<img>`.
-- **Marker holds decisions, not credentials** — never write tokens into
-  `.jfrog/local/package-guard.json`.
+- **Binding holds decisions, not credentials** — never write tokens into
+  `.jfrog/local/package-resolution.json`.
 
 ## References
 
 | File | When to read |
 |------|--------------|
 | [`references/jf-setup-command.md`](references/jf-setup-command.md) | CLI flags, supported PMs, exit-code contract, `jf setup --help` |
-| [`references/cache-file.md`](references/cache-file.md) | Global cache shape, resolution classes, jq one-liners |
-| [`references/package-guard-config.md`](references/package-guard-config.md) | Workspace marker schema, PM → type map, merge semantics |
+| [`references/global-cache-file.md`](references/global-cache-file.md) | Global cache shape, resolution classes, jq one-liners |
+| [`references/workspace-binding.md`](references/workspace-binding.md) | Workspace binding schema, PM → type map, merge semantics |
 
 ## Step 0 — Ensure `jf` is installed and a server is configured
 
@@ -86,9 +78,9 @@ Combine four signals, in order; intersect with `jf setup --help` supported list:
 
 1. **Explicit user mention.** Map aliases: python → `pip`/`poetry`; java →
    `maven`/`gradle`; node → `npm`/`yarn`/`pnpm` by lockfile.
-2. **Workspace marker** — read `.jfrog/local/package-guard.json`. Drop PMs
+2. **Workspace binding** — read `.jfrog/local/package-resolution.json`. Drop PMs
    already bound to the same key unless recovering from 401/403 (re-run same
-   key). PM → type table: [`package-guard-config.md`](references/package-guard-config.md).
+   key). PM → type table: [`workspace-binding.md`](references/workspace-binding.md).
 3. **Workspace manifests** when still ambiguous:
 
    | Manifest file | Package manager |
@@ -114,9 +106,9 @@ available — **no** list/discovery calls:
 
 1. **"Resolved URLs for this session"** table (default). Parse `<repoKey>`
    from URL; `<serverId>` from host.
-2. **Workspace marker** — if table was trimmed. `repositories.<type>`.
+2. **Workspace binding** — if table was trimmed. `repositories.<type>`.
 3. **Global cache** — last resort only; never overrides (1) or (2). See
-   [`cache-file.md`](references/cache-file.md).
+   [`global-cache-file.md`](references/global-cache-file.md).
 
 Cache disagreeing with (1)/(2) is not a reason to change the repo.
 
@@ -132,7 +124,7 @@ Ask via AskQuestion — never enumerate:
 
 Cap at **2 answers per PM**, then abort. User may override repo only, never server.
 
-## Step 3 — Confirm, run `jf setup`, persist marker
+## Step 3 — Confirm, run `jf setup`, persist binding
 
 1. Present the plan, one row per PM:
 
@@ -141,7 +133,7 @@ Cap at **2 answers per PM**, then abort. User may override repo only, never serv
    <pm>  → <repoKey> on <SID>               (source: user-supplied)
    ```
 
-2. Show marker diffs when the repo key changes.
+2. Show binding diffs when the repo key changes.
 
 3. **Confirm** via AskQuestion (`apply` / `change repos` / `abort`) unless the
    user explicitly requested silent/non-interactive setup — then run directly.
@@ -152,11 +144,11 @@ Cap at **2 answers per PM**, then abort. User may override repo only, never serv
    jf setup <pm> --server-id <SID> --repo <repoKey> [--project <key>]
    ```
 
-5. **Exit code `0` = success** — merge marker (step 6). On non-zero, **stop**,
+5. **Exit code `0` = success** — merge binding (step 6). On non-zero, **stop**,
    surface CLI output verbatim, offer alternate repo or `abort` (2-answer cap).
 
-6. On success, merge into `.jfrog/local/package-guard.json` per
-   [`package-guard-config.md`](references/package-guard-config.md):
+6. On success, merge into `.jfrog/local/package-resolution.json` per
+   [`workspace-binding.md`](references/workspace-binding.md):
 
    ```json
    { "repositories": { "<pkgType>": "<repoKey>" } }

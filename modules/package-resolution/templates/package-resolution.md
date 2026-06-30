@@ -40,7 +40,7 @@ config and server-side Curation back this):
 5. **Unresolved PM** — if the table shows `<no … repo resolved>` for the PM the user
    requested, **do not run the original command** (`docker pull …`, `npm install …`,
    etc.). In order: (a) invoke `jfrog-setup-package-managers` for that PM,
-   (b) wait until `.jfrog/local/package-guard.json` records the binding,
+   (b) wait until `.jfrog/local/package-resolution.json` records the binding,
    (c) re-issue routed via the templates above. A successful exit from an unrouted
    command still violates policy — including local Docker cache hits.
 6. **401/403 from JFrog** — run `jfrog-setup-package-managers` (`jf setup`); never raw `docker login` / `npm login` / `pip config`.
@@ -57,12 +57,12 @@ config and server-side Curation back this):
 - **Explicit host = user choice.** `docker pull ghcr.io/foo/bar` — leave as-is; do not
   re-prefix to JFrog.
 
-When a package manifest appears and `.jfrog/local/package-guard.json` lacks the
+When a package manifest appears and `.jfrog/local/package-resolution.json` lacks the
 matching PM, invoke `jfrog-setup-package-managers` proactively (see that skill for
 manifest → PM mapping).
 
 ## Enablement
 
-Package-guard is opt-in. Set `packageGuard.enabled: true` in `~/.jfrog/agents.json`.
+Opt-in via admin config. Set `packageResolution.enabled: true` in `~/.jfrog/agents-conf.json`.
 On first session, if that file is missing, the hook scaffolds it from the shipped
-template (`packageGuard.enabled` defaults to `false`).
+template (`packageResolution.enabled` defaults to `false`).

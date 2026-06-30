@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Claude Code SessionStart hook runner.
+// Cursor sessionStart hook runner.
 //
-// Usage: node claude-session-start.mjs <capability>
-// Example: node claude-session-start.mjs package-guard
+// Usage: node cursor-session-start.mjs <capability>
+// Example: node cursor-session-start.mjs package-resolution
 //
-// stdout: JSON with hookSpecificOutput.additionalContext. No stdout is a no-op.
+// stdout: JSON with additional_context. Empty object ("{}") is a no-op.
 
 import process from "node:process";
 
@@ -13,18 +13,13 @@ import { ensureAgentsConfigScaffold, agentsConfigLoadWarnings } from "./core/age
 import { readStdin, parseSessionId, detectHarness, parseWorkspaceRoots } from "./core/io.mjs";
 import { setLogContext, createLogger } from "./core/logger.mjs";
 
-const HARNESS_ID = "claude_code";
+const HARNESS_ID = "cursor";
 const log = createLogger("session-start");
 
 /** @returns {string | null} JSON stdout payload, or null when there is nothing to inject. */
 function formatSessionStartStdout(text) {
   if (!text?.trim()) return null;
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: text,
-    },
-  });
+  return JSON.stringify({ additional_context: text });
 }
 
 function writeStdout(payload) {
@@ -32,7 +27,7 @@ function writeStdout(payload) {
 }
 
 function writeNoOp() {
-  // Claude SessionStart: no stdout on no-op.
+  process.stdout.write("{}");
 }
 
 async function main() {

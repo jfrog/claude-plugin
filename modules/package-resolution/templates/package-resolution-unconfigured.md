@@ -30,6 +30,6 @@ Then re-issue the install.
 
 ## Enablement
 
-Package-guard is opt-in. Set `packageGuard.enabled: true` in `~/.jfrog/agents.json`.
+Routing is opt-in. Set `packageResolution.enabled: true` in `~/.jfrog/agents-conf.json`.
 On first session, if that file is missing, the hook scaffolds it from the shipped
-template (`packageGuard.enabled` defaults to `false`).
+template (`packageResolution.enabled` defaults to `false`).

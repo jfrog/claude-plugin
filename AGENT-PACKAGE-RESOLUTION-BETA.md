@@ -1,14 +1,14 @@
-# Package Guard beta (internal)
+# Agent Package Resolution beta (internal)
 
-Branch **`feature/package-guard`** ships the full JFrog Claude plugin with **Package Guard** bundled alongside Agent Guard and all three skills:
+Branch **`feature/package-guard`** ships the full JFrog Claude plugin with **Agent Package Resolution** bundled alongside Agent Guard and all three skills:
 
 | Component | What it does |
 |-----------|----------------|
-| **package-guard** hook | SessionStart policy + resolved Artifactory URLs |
+| **package-resolution** hook | SessionStart policy + resolved Artifactory URLs |
 | **agent-guard** hook | MCP catalog governance (`inject-instructions.mjs`) |
 | **jfrog** skill | Platform CLI / API workflows |
 | **jfrog-package-safety-and-download** skill | Package safety checks |
-| **jfrog-setup-package-managers** skill | `jf setup` PM binding (package-guard companion) |
+| **jfrog-setup-package-managers** skill | `jf setup` PM binding (Agent Package Resolution companion) |
 
 Not for public marketplace yet — share this branch with co-workers for dogfooding.
 
@@ -27,19 +27,19 @@ Then restart Claude Code (or `/reload-plugins`) and open a **new session**.
 
 **Quick dev (no install):** `claude --plugin-dir ~/.jfrog/claude-plugin-beta`
 
-### Enable Package Guard
+### Enable Agent Package Resolution
 
-Package Guard is opt-in. After first session, edit `~/.jfrog/agents.json`:
+Agent Package Resolution is opt-in. After first session, edit `~/.jfrog/agents-conf.json`:
 
 ```json
 {
-  "packageGuard": {
+  "packageResolution": {
     "enabled": true
   }
 }
 ```
 
-Or pre-deploy that file before the first session. See [configure-package-guard](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-package-guard.md) in `jfrog-agent-hooks`.
+Or pre-deploy that file before the first session. See [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md) in `jfrog-agent-hooks`.
 
 ### Prerequisites
 
@@ -76,10 +76,10 @@ claude --plugin-dir .
 When `jfrog-agent-hooks` changes, refresh the vendored bundle:
 
 ```bash
-JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
+JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-modules.mjs
 ```
 
-Replaces the whole `agent-hooks/` tree per `paths` in `.github/scripts/sync-agent-hooks-vendor.json`.
+Replaces the whole `modules/` tree per `paths` in `.github/scripts/sync-modules-vendor.json`.
 
 ## What install-beta.mjs does
 
@@ -88,7 +88,7 @@ Replaces the whole `agent-hooks/` tree per `paths` in `.github/scripts/sync-agen
 1. Runs `claude plugin marketplace add <repo-path>` (requires `.claude-plugin/marketplace.json`)
 2. Runs `claude plugin install jfrog@jfrog-beta`
 3. Sets `enabledPlugins["jfrog@jfrog-beta"] = true` in `~/.claude/settings.json`
-4. Removes stale **manual** package-guard hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
+4. Removes stale **manual** package-resolution hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
 5. Backs up settings before any edit
 
 **Uninstall (`--uninstall`)**
@@ -97,7 +97,7 @@ Replaces the whole `agent-hooks/` tree per `paths` in `.github/scripts/sync-agen
 2. Runs `claude plugin marketplace remove jfrog-beta`
 3. Deletes `~/.claude/plugins/cache/jfrog-beta/` if present
 4. Removes all `jfrog@…` keys from `enabledPlugins` (including legacy absolute-path keys)
-5. Removes stale manual package-guard hooks
+5. Removes stale manual package-resolution hooks
 6. Suggests `rm -rf <clone-path>` to delete the git clone (not run automatically)
 
-Does **not** remove `~/.jfrog/agents.json` (your config; keep or edit manually).
+Does **not** remove `~/.jfrog/agents-conf.json` (your config; keep or edit manually).

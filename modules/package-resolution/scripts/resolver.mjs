@@ -4,12 +4,12 @@
 // Session resolution (once per hook process, per jf server id).
 // Identity comes from a separate local `jf config export` (always runs; cheap).
 // This module only controls Artifactory HTTP:
-//   1. Valid local cache ~/.jfrog/skills-cache/package-guard.json → no HTTP
-//   2. Else read defaultGlobalRepos from ~/.jfrog/agents.json
+//   1. Valid local cache ~/.jfrog/skills-cache/package-resolution.json → no HTTP
+//   2. Else read defaultGlobalRepos from ~/.jfrog/agents-conf.json
 //   3. Optional verify via GET …/api/repositories/{key} (verifyRepos, default true)
-//   4. Write snapshot to cache file (TTL from agents.json cacheTtlDays)
+//   4. Write snapshot to cache file (TTL from agents-conf.json cacheTtlDays)
 
-import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -28,16 +28,12 @@ function cacheDir() {
 }
 
 function cacheFile() {
-  return path.join(cacheDir(), "package-guard.json");
-}
-
-function legacyCacheFile() {
-  return path.join(cacheDir(), "package-guard-cache.json");
+  return path.join(cacheDir(), "package-resolution.json");
 }
 
 const CACHE_SCHEMA_VERSION = 1;
 
-/** Default cache TTL in ms (7 days) — used when agents.json omits cacheTtlDays. */
+/** Default cache TTL in ms (7 days) — used when agents-conf.json omits cacheTtlDays. */
 export const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { PACKAGE_TYPES };
@@ -60,7 +56,7 @@ function effectiveServerId(hint) {
 
 function packageResolveSource(serverId, { via } = {}) {
   const suffix = via ? ` via=${via}` : "";
-  return `package-guard:${cacheFile()}#${serverId}${suffix}`;
+  return `package-resolution:${cacheFile()}#${serverId}${suffix}`;
 }
 
 /** Last session-wide resolve metadata (for inject-instructions EVENT log). */
@@ -90,16 +86,13 @@ function urlFor(type, repoKey, base) {
 }
 
 async function readCacheFile() {
-  const primary = cacheFile();
-  for (const file of [primary, legacyCacheFile()]) {
-    try {
-      const raw = await readFile(file, "utf8");
-      return { data: JSON.parse(raw), file: primary };
-    } catch {
-      // try next path
-    }
+  const file = cacheFile();
+  try {
+    const raw = await readFile(file, "utf8");
+    return { data: JSON.parse(raw), file };
+  } catch {
+    return { data: null, file };
   }
-  return { data: null, file: primary };
 }
 
 async function writeCacheFile(root) {
@@ -113,10 +106,6 @@ async function writeCacheFile(root) {
   await writeFile(file, JSON.stringify(payload, null, 2));
   if (creating) {
     log.info("created global cache file", { cache: file });
-  }
-  const legacy = legacyCacheFile();
-  if (existsSync(legacy)) {
-    await unlink(legacy).catch(() => {});
   }
 }
 
@@ -212,9 +201,9 @@ async function refreshServerCache(serverId) {
   const id = identityOrNull();
   const base = id ? `${id.url}/artifactory` : "";
   const repositories = {};
-  const pg = loadAgentsConfig().packageGuard;
-  const verifyRepos = pg.verifyRepos;
-  const adminRepos = pg.defaultGlobalRepos ?? {};
+  const pr = loadAgentsConfig().packageResolution;
+  const verifyRepos = pr.verifyRepos;
+  const adminRepos = pr.defaultGlobalRepos ?? {};
   const agentsConfigMtimeMs = getAgentsConfigMtimeMs();
 
   for (const type of PACKAGE_TYPES) {
@@ -231,10 +220,10 @@ async function refreshServerCache(serverId) {
         continue;
       }
       repositories[type] = repoKey;
-      log.debug("resolved from agents.json (verified)", { type, repoKey });
+      log.debug("resolved from agents-conf.json (verified)", { type, repoKey });
     } else {
       repositories[type] = repoKey;
-      log.debug("resolved from agents.json (trusted)", { type, repoKey });
+      log.debug("resolved from agents-conf.json (trusted)", { type, repoKey });
     }
   }
 
@@ -266,11 +255,11 @@ async function refreshServerCache(serverId) {
 }
 
 async function loadFreshCacheEntry(serverId) {
-  const pg = loadAgentsConfig().packageGuard;
+  const pr = loadAgentsConfig().packageResolution;
   const agentsConfigMtimeMs = getAgentsConfigMtimeMs();
   const { data, file } = await readCacheFile();
   const entry = normalizeServerEntry(normalizeCacheRoot(data).servers[serverId]);
-  if (!entry || !isEntryFresh(entry, agentsConfigMtimeMs, pg.cacheTtlDays)) return null;
+  if (!entry || !isEntryFresh(entry, agentsConfigMtimeMs, pr.cacheTtlDays)) return null;
 
   const id = identityOrNull();
   const base = id ? `${id.url}/artifactory` : "";

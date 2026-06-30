@@ -1,11 +1,11 @@
-# `package-guard.json` — Global Resolver Cache
+# `package-resolution.json` — Global Resolver Cache
 
-The `package-guard` session-start hook runs a small resolver
-that picks the Artifactory repository key per package type for the current
-JFrog server and caches the result in:
+The session-start hook runs a small resolver that picks the Artifactory
+repository key per package type for the current JFrog server and caches
+the result in:
 
 ```
-~/.jfrog/skills-cache/package-guard.json
+~/.jfrog/skills-cache/package-resolution.json
 ```
 
 This skill **reads** that file in Step 2 to recover the repo key per PM
@@ -15,10 +15,10 @@ injects into agent context — the latter can be trimmed by long-context
 pruning, the file cannot.
 
 > This is a **read-only contract** for this skill. The cache is written by
-> the package-guard session-start hook; never write or hand-edit it.
+> the session-start hook; never write or hand-edit it.
 
-> **Not** the workspace override file — that lives at
-> `.jfrog/local/package-guard.json` (same filename, different directory).
+> **Not** the workspace binding file — that lives at
+> `.jfrog/local/package-resolution.json` (see [`workspace-binding.md`](workspace-binding.md)).
 
 ## Shape
 
@@ -45,18 +45,18 @@ pruning, the file cannot.
 ```
 
 Each `servers.<serverId>` entry holds `repositories`, `cached_at`, `source`, and
-`agentsConfigMtimeMs` (mtime of `~/.jfrog/agents.json` at last refresh).
-The workspace file at
-[`.jfrog/local/package-guard.json`](references/package-guard-config.md) holds
+`agentsConfigMtimeMs` (mtime of `~/.jfrog/agents-conf.json` at last refresh).
+The workspace binding file at
+[`.jfrog/local/package-resolution.json`](workspace-binding.md) holds
 only `repositories`. The map key **is** the `serverId`.
 
 | Field | Meaning |
 |---|---|
 | `schemaVersion` | Always `1` for this schema. |
 | `servers.<serverId>.repositories.<pkgType>` | Resolver's chosen repo key for this package type, on this server. **Missing key = `unresolved`** for that PM. |
-| `servers.<serverId>.cached_at` | ISO-8601 timestamp of the last refresh. TTL from `packageGuard.cacheTtlDays` in agents.json (default 7). |
-| `servers.<serverId>.agentsConfigMtimeMs` | Invalidates cache when `~/.jfrog/agents.json` changes. |
-| `servers.<serverId>.source` | `verified` = keys from agents.json checked via `GET /api/repositories/{key}`; `agents-config` = trusted without HTTP (`verifyRepos: false`). Legacy entries may show `probe` or `guard-config` until refreshed. |
+| `servers.<serverId>.cached_at` | ISO-8601 timestamp of the last refresh. TTL from `packageResolution.cacheTtlDays` in agents-conf.json (default 7). |
+| `servers.<serverId>.agentsConfigMtimeMs` | Invalidates cache when `~/.jfrog/agents-conf.json` changes. |
+| `servers.<serverId>.source` | `verified` = keys from agents-conf.json checked via `GET /api/repositories/{key}`; `agents-config` = trusted without HTTP (`verifyRepos: false`). |
 
 Package type keys used in the file are `npm`, `pypi`, `maven`, `go`,
 `docker`, `helm`, `nuget`. Note `pypi` (not `pip`) — same convention the
@@ -70,15 +70,12 @@ When you look up a PM in this file, you get one of:
 
 | Class | Detect | What the resolver did | HTTP-verified? |
 |---|---|---|---|
-| **resolved (verified)** | `repositories.<pkg>` present, `source` is `verified` | Key from `~/.jfrog/agents.json` `defaultGlobalRepos`, checked via `GET /api/repositories/<key>` | **Yes** (at last refresh) |
-| **resolved (trusted)** | `repositories.<pkg>` present, `source` is `agents-config` | Key from agents.json with `verifyRepos: false` | **No** |
-| **unresolved** | `repositories.<pkg>` is missing | No mapping in agents.json, verify failed, or type not configured | n/a |
+| **resolved (verified)** | `repositories.<pkg>` present, `source` is `verified` | Key from `~/.jfrog/agents-conf.json` `defaultGlobalRepos`, checked via `GET /api/repositories/<key>` | **Yes** (at last refresh) |
+| **resolved (trusted)** | `repositories.<pkg>` present, `source` is `agents-config` | Key from agents-conf.json with `verifyRepos: false` | **No** |
+| **unresolved** | `repositories.<pkg>` is missing | No mapping in agents-conf.json, verify failed, or type not configured | n/a |
 
 The skill relies on `jf setup --repo` to validate the repo key at apply
-time (`GET /api/repositories/<repoKey>` inside the CLI). Resolver cache
-entries — including `guard-config` values that were never HTTP-checked
-and `probe` values that may be up to 7 days old — are not pre-verified
-by this skill.
+time (`GET /api/repositories/<repoKey>` inside the CLI).
 
 ## Reading the cache from the skill
 
@@ -87,7 +84,7 @@ The current `serverId` for this session comes from `jf config export`
 
 ```bash
 SID="$(jf c show --server-id 2>/dev/null | awk '/Server ID/ {print $3; exit}')"
-CACHE="$HOME/.jfrog/skills-cache/package-guard.json"
+CACHE="$HOME/.jfrog/skills-cache/package-resolution.json"
 
 # Get a repo key for a package type (empty if unresolved):
 jq -r --arg sid "$SID" --arg type "<pkgType>" '.servers[$sid].repositories[$type] // ""' "$CACHE"
@@ -95,7 +92,7 @@ jq -r --arg sid "$SID" --arg type "<pkgType>" '.servers[$sid].repositories[$type
 # Dump every resolved (pkgType, repoKey) pair for this SID:
 jq -r --arg sid "$SID" '.servers[$sid].repositories | to_entries[] | "\(.key)\t\(.value)"' "$CACHE"
 
-# Inspect resolution source (was it guard-config or a probe?):
+# Inspect resolution source:
 jq -r --arg sid "$SID" '.servers[$sid].source' "$CACHE"
 ```
 
@@ -105,7 +102,7 @@ the injected "Resolved URLs for this session" table in agent context
 (parse the URL to recover `repoKey`), and if that is also absent, treat
 every PM as `unresolved` and prompt the user (Step 2).
 
-The resolver refreshes stale entries on session start (TTL + agents.json mtime).
+The resolver refreshes stale entries on session start (TTL + agents-conf.json mtime).
 This skill never invalidates the cache — if `jf setup` fails on a repo key, ask the user.
 
 ## Not in this file
@@ -113,5 +110,5 @@ This skill never invalidates the cache — if `jf setup` fails on a repo key, as
 These belong elsewhere and the skill must not look for them here:
 
 - Tokens, credentials, refresh tokens. (Stored by `jf config`.)
-- Per-workspace decisions. (Stored in
-  [`.jfrog/local/package-guard.json`](references/package-guard-config.md).)
+- Per-workspace bindings. (Stored in
+  [`.jfrog/local/package-resolution.json`](workspace-binding.md).)

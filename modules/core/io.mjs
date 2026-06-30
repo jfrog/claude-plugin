@@ -79,11 +79,6 @@ export function detectHarness(stdinRaw) {
  * @returns {string[]}
  */
 export function parseWorkspaceRoots(stdinRaw) {
-  const env = process.env.JFROG_PACKAGE_GUARD_WORKSPACE_ROOTS;
-  if (env) {
-    return env.split(":").map((s) => s.trim()).filter(Boolean);
-  }
-
   if (stdinRaw?.trim()) {
     try {
       const p = JSON.parse(stdinRaw);

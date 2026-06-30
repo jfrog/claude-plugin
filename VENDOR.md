@@ -27,21 +27,21 @@ The script reads its sibling [`sync-skills-vendor.json`](.github/scripts/sync-sk
 
 ---
 
-# Vendored agent-hooks
+# Vendored modules
 
-The `agent-hooks/` bundle is vendored from **jfrog-agent-hooks** (GHE) and committed to the beta branch.
+The `modules/` bundle is vendored from **jfrog-agent-hooks** (GHE) and committed to the beta branch.
 
 | | |
 | --- | --- |
 | **Repository** | `github.jfrog.info/JFROG/jfrog-agent-hooks` |
-| **Pinned release** | see `pin` in [`.github/scripts/sync-agent-hooks-vendor.json`](.github/scripts/sync-agent-hooks-vendor.json) |
+| **Pinned release** | see `pin` in [`.github/scripts/sync-modules-vendor.json`](.github/scripts/sync-modules-vendor.json) |
 
-The bundle contains harness runners (`core/`, `*-session-start.mjs`), the `package-guard/` capability, and `assets/agents-default.json`.
+The bundle contains harness runners (`core/`, `*-session-start.mjs`), the `package-resolution/` capability, and `assets/agents-default-conf.json`.
 
 ## Refreshing
 
 ```bash
-JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-agent-hooks.mjs
+JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-modules.mjs
 ```
 
-The script reads `paths` from `sync-agent-hooks-vendor.json` (today: `["agent-hooks"]`) and replaces the whole `agent-hooks/` tree.
+The script reads `paths` from `sync-modules-vendor.json` (today: `["modules"]`) and replaces the whole `modules/` tree.

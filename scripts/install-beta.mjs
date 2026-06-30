@@ -7,7 +7,7 @@
 //   node scripts/install-beta.mjs --uninstall
 //
 // Requires `claude` on PATH (Claude Code CLI). Sets enabledPlugins["jfrog@jfrog-beta"].
-// Removes stale manual package-guard hooks from jfrog-agent-hooks install-local.mjs.
+// Removes stale manual package-resolution hooks from jfrog-agent-hooks install-local.mjs.
 
 import { readFile, writeFile, mkdir, access, rm } from "node:fs/promises";
 import { constants as FS } from "node:fs";
@@ -34,9 +34,8 @@ function isJfrogPluginKey(key) {
 const MANUAL_HOOK_MARKERS = [
   "cursor-session-start.mjs",
   "claude-session-start.mjs",
-  "package-guard/adapters",
-  "package-guard/hooks",
-  "package-guard/scripts",
+  "package-resolution/scripts",
+  "modules/",
 ];
 
 function parseArgs(argv) {
@@ -211,7 +210,7 @@ async function main() {
     }
     if (!(await exists(marketplaceFile))) {
       throw new Error(
-        `missing ${marketplaceFile} — pull latest feature/package-guard (marketplace manifest required)`,
+        `missing ${marketplaceFile} — pull latest feature/package-guard or main with marketplace manifest`,
       );
     }
   }
@@ -258,7 +257,7 @@ async function main() {
   console.log("next: restart Claude Code or run /reload-plugins, then start a new session.");
   console.log("verify:  claude plugin list   or   /plugin inside Claude Code");
   console.log("skills:  /jfrog, /jfrog-package-safety-and-download, /jfrog-setup-package-managers");
-  console.log("enable package-guard: set packageGuard.enabled to true in ~/.jfrog/agents.json");
+  console.log("enable Agent Package Resolution: set packageResolution.enabled to true in ~/.jfrog/agents-conf.json");
 }
 
 main().catch((err) => {
