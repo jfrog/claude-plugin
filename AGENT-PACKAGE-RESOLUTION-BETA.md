@@ -1,35 +1,45 @@
-# Agent Package Resolution beta (internal)
+# Agent Package Resolution beta (internal) — Claude Code
 
-Branch **`feature/package-guard`** ships the full JFrog Claude plugin with **Agent Package Resolution** bundled alongside Agent Guard and all three skills:
+Internal dogfooding branch **`feature/package-resolution`**. Not on the public marketplace yet.
+
+> **Note:** The older branch `feature/package-guard` is deprecated for new installs; use `feature/package-resolution` instead. The old branch remains on the remote for now.
 
 | Component | What it does |
 |-----------|----------------|
 | **package-resolution** hook | SessionStart policy + resolved Artifactory URLs |
-| **agent-guard** hook | MCP catalog governance (`inject-instructions.mjs`) |
+| **agent-guard** hook | MCP catalog governance |
 | **jfrog** skill | Platform CLI / API workflows |
 | **jfrog-package-safety-and-download** skill | Package safety checks |
-| **jfrog-setup-package-managers** skill | `jf setup` PM binding (Agent Package Resolution companion) |
+| **jfrog-setup-package-managers** skill | `jf setup` PM binding |
 
-Not for public marketplace yet — share this branch with co-workers for dogfooding.
+## Prerequisites
 
-## One-command install (peers)
+- [Claude Code CLI](https://code.claude.com/docs) (`claude` on PATH)
+- **Node.js** ≥ 14 on `PATH` (hooks run via `node`)
+- **`jf` CLI** configured (`jf config add`) or `JFROG_URL` + `JFROG_ACCESS_TOKEN`
 
-Requires the [Claude Code CLI](https://code.claude.com/docs) (`claude` on PATH).
+## Install
 
 ```bash
-git clone -b feature/package-guard --depth 1 https://github.com/jfrog/claude-plugin.git ~/.jfrog/claude-plugin-beta && \
+git clone -b feature/package-resolution --depth 1 https://github.com/jfrog/claude-plugin.git ~/.jfrog/claude-plugin-beta && \
   node ~/.jfrog/claude-plugin-beta/scripts/install-beta.mjs --repo-path ~/.jfrog/claude-plugin-beta
 ```
 
-This registers the local marketplace (`.claude-plugin/marketplace.json`), runs `claude plugin install jfrog@jfrog-beta`, and sets `enabledPlugins` in `~/.claude/settings.json`.
+This registers the local marketplace, installs `jfrog@jfrog-beta`, and enables it in `~/.claude/settings.json`.
 
-Then restart Claude Code (or `/reload-plugins`) and open a **new session**.
+Then restart Claude Code (or run `/reload-plugins`) and open a **new session**.
 
-**Quick dev (no install):** `claude --plugin-dir ~/.jfrog/claude-plugin-beta`
+Verify: run `/plugin` or `claude plugin list` — you should see **jfrog@jfrog-beta**.
 
-### Enable Agent Package Resolution
+## Configure
 
-Agent Package Resolution is opt-in. After first session, edit `~/.jfrog/agents-conf.json`:
+### 1. JFrog CLI and credentials
+
+Ensure `jf` works and your platform URL / token are set (`jf config add` or env vars).
+
+### 2. Enable Agent Package Resolution (opt-in)
+
+Edit `~/.jfrog/agents-conf.json`:
 
 ```json
 {
@@ -39,22 +49,69 @@ Agent Package Resolution is opt-in. After first session, edit `~/.jfrog/agents-c
 }
 ```
 
-Or pre-deploy that file before the first session. See [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md) in `jfrog-agent-hooks`.
+You can create this file before your first session. Details: [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md).
 
-### Prerequisites
+After changing this file, open a **new session** (or `/reload-plugins`) so the hook picks it up.
 
-- `jf` CLI configured (`jf config add`) or `JFROG_URL` + `JFROG_ACCESS_TOKEN`
-- Node.js ≥ 14 on `PATH` (hooks run via `node`)
+## Start using it
 
-## Uninstall beta
+1. Confirm the plugin is active (`/plugin` or `claude plugin list`).
+2. Set `packageResolution.enabled` if you want install routing (step above).
+3. Open a **new session** in a project that has a package manifest or ask Claude to run package commands.
+
+## Try it
+
+### Example A — configure npm (works with or without `enabled: true`)
+
+Ask Claude in natural language:
+
+> Configure my npm to use JFrog Artifactory
+
+This uses the **jfrog-setup-package-managers** skill (`jf setup npm`, workspace binding). It does **not** require `packageResolution.enabled`.
+
+### Example B — package routing (requires `enabled: true`)
+
+Enable package resolution, start a **new session**, then ask for example:
+
+> Run `npm install express`
+
+or
+
+> Run `docker pull alpine:latest`
+
+**Expected when enabled:** Claude routes installs through your Artifactory repos (from the session hook’s resolved URLs), not the public npm registry or Docker Hub. It should refuse or rewrite bare `docker pull alpine:latest` to your Artifactory docker repo if docker is bound.
+
+**Expected when disabled:** Claude may install from public registries unless you ask it to use JFrog explicitly.
+
+For docker, run Example A for docker first if you have no Artifactory docker binding yet.
+
+## Update the plugin
+
+Pull the latest beta branch and re-run the installer:
+
+```bash
+cd ~/.jfrog/claude-plugin-beta && \
+  git pull origin feature/package-resolution && \
+  node scripts/install-beta.mjs --repo-path ~/.jfrog/claude-plugin-beta
+```
+
+Then restart Claude Code (or `/reload-plugins`) and open a **new session**.
+
+To get a completely fresh clone instead:
+
+```bash
+rm -rf ~/.jfrog/claude-plugin-beta && \
+  git clone -b feature/package-resolution --depth 1 https://github.com/jfrog/claude-plugin.git ~/.jfrog/claude-plugin-beta && \
+  node ~/.jfrog/claude-plugin-beta/scripts/install-beta.mjs --repo-path ~/.jfrog/claude-plugin-beta
+```
+
+## Uninstall
 
 ```bash
 node ~/.jfrog/claude-plugin-beta/scripts/install-beta.mjs --uninstall
 ```
 
-This runs `claude plugin uninstall jfrog@jfrog-beta`, `claude plugin marketplace remove jfrog-beta`, clears the plugin cache, and removes `enabledPlugins` entries from `~/.claude/settings.json`.
-
-Then optionally delete the clone:
+Optional — remove the clone:
 
 ```bash
 rm -rf ~/.jfrog/claude-plugin-beta
@@ -62,42 +119,4 @@ rm -rf ~/.jfrog/claude-plugin-beta
 
 Re-install the public marketplace plugin with `/plugin install jfrog` if needed.
 
-## Local development (contributors)
-
-```bash
-git checkout feature/package-guard
-claude --plugin-dir .
-# after edits:
-/reload-plugins
-```
-
-### Re-sync from jfrog-agent-hooks
-
-When `jfrog-agent-hooks` changes, refresh the vendored bundle:
-
-```bash
-JFROG_AGENT_HOOKS_PATH=/path/to/jfrog-agent-hooks node .github/scripts/sync-modules.mjs
-```
-
-Replaces the whole `modules/` tree per `paths` in `.github/scripts/sync-modules-vendor.json`.
-
-## What install-beta.mjs does
-
-**Install**
-
-1. Runs `claude plugin marketplace add <repo-path>` (requires `.claude-plugin/marketplace.json`)
-2. Runs `claude plugin install jfrog@jfrog-beta`
-3. Sets `enabledPlugins["jfrog@jfrog-beta"] = true` in `~/.claude/settings.json`
-4. Removes stale **manual** package-resolution hooks from `jfrog-agent-hooks/dev/install-local.mjs` (if present)
-5. Backs up settings before any edit
-
-**Uninstall (`--uninstall`)**
-
-1. Runs `claude plugin uninstall jfrog@jfrog-beta -y`
-2. Runs `claude plugin marketplace remove jfrog-beta`
-3. Deletes `~/.claude/plugins/cache/jfrog-beta/` if present
-4. Removes all `jfrog@…` keys from `enabledPlugins` (including legacy absolute-path keys)
-5. Removes stale manual package-resolution hooks
-6. Suggests `rm -rf <clone-path>` to delete the git clone (not run automatically)
-
-Does **not** remove `~/.jfrog/agents-conf.json` (your config; keep or edit manually).
+Does **not** remove `~/.jfrog/agents-conf.json` — edit or delete that file manually if you want to turn off package resolution.

@@ -210,7 +210,7 @@ async function main() {
     }
     if (!(await exists(marketplaceFile))) {
       throw new Error(
-        `missing ${marketplaceFile} — pull latest feature/package-guard or main with marketplace manifest`,
+        `missing ${marketplaceFile} — pull latest feature/package-resolution or main with marketplace manifest`,
       );
     }
   }

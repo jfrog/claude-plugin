@@ -47,7 +47,7 @@ claude --plugin-dir /path/to/claude-plugin
 
 ### Agent Package Resolution beta (internal)
 
-See [`AGENT-PACKAGE-RESOLUTION-BETA.md`](AGENT-PACKAGE-RESOLUTION-BETA.md) for the `feature/package-guard` branch — bundled Agent Package Resolution + one-command peer install.
+See [`AGENT-PACKAGE-RESOLUTION-BETA.md`](AGENT-PACKAGE-RESOLUTION-BETA.md) for the `feature/package-resolution` branch — bundled Agent Package Resolution + one-command peer install.
 
 ---
 
