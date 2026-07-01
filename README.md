@@ -54,7 +54,7 @@ claude --plugin-dir /path/to/claude-plugin
 
 | Variable | Description |
 | --- | --- |
-| `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` |
+| `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` (no trailing `/`) |
 | `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
 ### 2. Configure the JFrog CLI
