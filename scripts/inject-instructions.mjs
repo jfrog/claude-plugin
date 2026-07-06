@@ -41,7 +41,7 @@ function resolveCredentials() {
     configToken = execFileSync("jf", ["config", "export"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      timeout: 3000,
+      timeout: 1500,
     }).trim();
   } catch (error) {
     debug(`'jf config export' failed (jf not on PATH or no server configured): ${error.message}`);
@@ -80,7 +80,7 @@ async function isAgentGuardEnabledViaSettings() {
   debug(`Fetching agent guard setting from ${url}`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 4000);
   try {
     const response = await fetch(url, {
       method: "GET",
