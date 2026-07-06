@@ -56,13 +56,13 @@ function resolveCredentials() {
     return null;
   }
 
-  if (!cfg?.url || !cfg?.accessToken) {
-    debug("jf Config Token did not contain a usable url + accessToken");
+  if (!cfg?.accessToken || (!baseUrl && !cfg?.url)) {
+    debug("jf Config Token did not contain a usable accessToken");
     return null;
   }
 
   debug(`Resolved credentials via 'jf config export' (serverId: ${cfg.serverId ?? "<unknown>"})`);
-  return { baseUrl: cfg.url, token: cfg.accessToken };
+  return { baseUrl: baseUrl ?? cfg.url, token: cfg.accessToken };
 }
 
 async function isAgentGuardEnabledViaSettings() {
