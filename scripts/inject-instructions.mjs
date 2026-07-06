@@ -162,7 +162,6 @@ try {
   process.exit(0);
 }
 
-// The IDE consumes hookSpecificOutput.additionalContext from a SessionStart hook.
 process.stdout.write(
   JSON.stringify({
     hookSpecificOutput: {
