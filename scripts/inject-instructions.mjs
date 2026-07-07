@@ -114,30 +114,6 @@ if (forceDisabled) {
   process.exit(0);
 }
 
-// Validate JFROG_URL early to surface misconfigurations before the MCP server
-// attempts to connect and fails with a confusing DNS or double-slash error.
-if (!process.env.JFROG_URL) {
-  const missingUrlWarning = "WARNING: JFROG_URL is not set. The JFrog MCP server will be unreachable — set JFROG_URL to your Artifactory base URL (e.g. https://mycompany.jfrog.io) and restart.";
-  log(missingUrlWarning);
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: `IMPORTANT: Immediately tell the user: "${missingUrlWarning}"`,
-    },
-  }));
-  process.exit(0);
-} else if (process.env.JFROG_URL.endsWith("/")) {
-  const trailingSlashWarning = "WARNING: JFROG_URL has a trailing slash. This produces a double-slash in the MCP URL and will silently fail — remove the trailing slash and restart.";
-  log(trailingSlashWarning);
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: `IMPORTANT: Immediately tell the user: "${trailingSlashWarning}"`,
-    },
-  }));
-  process.exit(0);
-}
-
 if (forceEnabled) {
   debug("Force-enable flag is set.");
 } else if (!(await isAgentGuardEnabledViaSettings())) {
