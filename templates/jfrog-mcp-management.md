@@ -14,11 +14,21 @@ below instead.
 
 **Registry URL**: Wherever `<REGISTRY_URL>` appears below, substitute
 the value of the `JFROG_AGENT_GUARD_REPO` environment variable if it
-is set. Otherwise use
+is set. Otherwise, use
 `https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/`.
 
 **Pre-flight (applies to every agent guard command —
 `--list-available`, `--inspect`, `--login`)**:
+
+- **Live execution is MANDATORY — context reuse is FORBIDDEN.** Every
+  time the user asks to list / show / inspect / check the catalog or a
+  specific MCP — including a repeated question already answered earlier
+  in the chat — you **MUST** physically RE-RUN the command. NEVER reuse,
+  copy, or re-display output from previous turns or context history; the
+  catalog, headers, and required inputs change between prompts. (Applies
+  to these catalog/registry fetches only — `--list-available` and
+  `--inspect`; NOT `--login`, which would re-open the OAuth browser, and
+  NOT reading local config for *installed* state.)
 
 - **`<PROJECT>` is always mandatory.** Resolve via Step 1's project
   chain: existing `mcpServers` entries (`_JF_ARGS` →
@@ -26,22 +36,25 @@ is set. Otherwise use
   resolves, STOP and ask — NEVER guess, NEVER assume `default`,
   NEVER invent projects.
 
-- **`<SERVER_ID>` is auto-resolvable.** Resolve via Step 1's server
-  chain: existing `mcpServers` entries (value after `--server` in
-  `args`) → `~/.jfrog/jfrog-cli.conf.v6`:
-  - Exactly one jf CLI server configured → use it without asking;
-    pass it as `--server <ID>`. The agent guard would auto-resolve to the same
-    value if `--server` were omitted, but we pass it explicitly for
-    clarity and forward-compatibility.
-  - `JFROG_URL` + `JFROG_ACCESS_TOKEN` set → use it without asking;
-    The agent guard will pick them up from the environment variables when called.
-  - Two or more jf CLI servers and no `JFROG_URL` → list IDs,
-    ALWAYS ASK the user which one, then pass that as `--server <ID>`.
-    ALWAYS prefer environment variables when set over asking.
-    NEVER guess one server.
-  - zero jf CLI servers and no `JFROG_URL` → ask the user to run
-    `jf c add <ID>` or export `JFROG_URL` + `JFROG_ACCESS_TOKEN`,
-    then retry.
+- **`<SERVER_ID>` is auto-resolvable.** Resolve in order, stop at the
+  first match:
+  1. An existing `mcpServers` entry's `--server <ID>` (project or user
+     config) — reuse it.
+  2. `JFROG_URL` + `JFROG_ACCESS_TOKEN` set in the env — use them and do
+     NOT pass `--server` (the agent guard reads the env directly).
+  3. List configured servers with the jf CLI — `jf config show --format=json`
+     (do NOT parse `~/.jfrog/jfrog-cli.conf.v6`; the CLI masks tokens, so
+     its output is safe). Exactly one → use it; two or more → use the one
+     with `"isDefault": true`; if none is marked default → ASK the user
+     which one. Then pass `--server <ID>`.
+  4. None of the above → ask the user to run `jf c add <ID>` or export
+     `JFROG_URL` + `JFROG_ACCESS_TOKEN`, then retry.
+
+  When you resolved the ID from a jf CLI config, always pass it as
+  `--server <ID>`; when using env vars, never pass `--server`.
+- The commands need network access to the npm registry and the JFrog
+  platform. A corporate proxy, VPN, or blocked registry can surface as
+  `Forbidden` / `403` errors.
 
 Once both are determined, proceed. If either is still unknown,
 STOP — do NOT run the command with guesses.
@@ -53,11 +66,11 @@ STOP — do NOT run the command with guesses.
 "add an MCP", "what can I install" — your FIRST action is to show
 them the catalog so they can pick:
 
-1. Resolve server (Server ID`<SERVER_ID>` or URL `JFROG_URL`)
+1. Resolve server (Server ID `<SERVER_ID>` or URL `JFROG_URL`)
    and `<PROJECT>` per the Pre-flight rule at the top of this document.
    Server: auto-use the single jf CLI configs serverId as the server ID
    or the `JFROG_URL` env var as the URL if unambiguous; only ask when
-   there are multiple or no jf configs and not env vars.
+   there are multiple or no jf configs and no env vars.
    Project: Ask unless `JF_PROJECT` is set, or it's already in an
    existing `mcpServers` entry.
 2. Run "Listing MCPs > Available to install" with that server +
@@ -84,22 +97,20 @@ unless absolutely necessary:
    agent guard can resolve credentials from these directly;
    DO NOT pass `--server` as that would make the agent guard try to
    parse the server details from the jf cli configuration.
-3. Else read `~/.jfrog/jfrog-cli.conf.v6`
-   (`%USERPROFILE%\.jfrog\jfrog-cli.conf.v6` on Windows) via a
-   terminal command (file-search skips hidden dirs).
-   NEVER print the full file contents as it can contain secrets. 
-   Use the serverId subkeys:
+3. Else list configured servers with the jf CLI — run
+   `jf config show --format=json` (do NOT parse
+   `~/.jfrog/jfrog-cli.conf.v6` yourself; the CLI masks tokens, so its
+   output is safe to read). From the result:
    - exactly one server → use it without asking.
-   - two or more → list the `serverId`s and ASK the user which one.
+   - two or more → use the one with `"isDefault": true`; if none is
+     marked default, list the `serverId`s and ASK the user which one.
 4. Else (file missing, empty, or unreadable, and no `JFROG_URL`)
    ask the user to either run `jf c add <ID>` or export
    `JFROG_URL` + `JFROG_ACCESS_TOKEN`, then retry.
 
-NEVER try multiple servers — pick one. Once chosen, pass it
-If a server from the jf cli configuration is supposed to be used:
-Always explicitly as `--server <ID>` in every agent guard invocation.
-Otherwise, if environment variables for `JFROG_URL` and `JFROG_ACCESS_TOKEN`
-are used: Do NOT pass `--server <ID>`
+NEVER try multiple servers — pick one. When you resolved the ID from a
+jf CLI config, always pass it as `--server <ID>` in every agent guard
+invocation; when using env vars, never pass `--server`.
 
 **Project**
 
@@ -286,6 +297,10 @@ npx --yes \
   --mcp <spec.packageName>
 ```
 
+Note: `--login` launches the system browser and runs a local OAuth
+callback server, so the browser must be able to reach the IdP and loop
+back to the local callback.
+
 Outcomes:
 
 - **Exit 0** — OAuth completed; tokens cached; server ready.
@@ -458,3 +473,8 @@ the display name.
 - **OAuth MCP failing** — refresh token expired; re-run Step 5.
 - **401/403 with `${VAR}`** — env var unset/wrong; re-export in the
   launching shell and relaunch.
+- **Network / proxy / DNS error** — outside the agent guard's scope;
+  tell the user and stop.
+- **npx package fetch returns 403** — usually a corporate proxy/VPN, a
+  blocked or wrong registry, or a curation policy. Troubleshoot
+  registry/auth/package/curation policy as usual.

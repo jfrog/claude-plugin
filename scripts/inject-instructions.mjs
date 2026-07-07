@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Copyright (c) JFrog Ltd. 2026
 // Licensed under the Apache License, Version 2.0
+// https://www.apache.org/licenses/LICENSE-2.0
 
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -23,17 +25,57 @@ const forceDisabled =
 const forceEnabled =
     env("JF_AGENT_GUARD_FORCE_ENABLE") === "true";
 
-async function isAgentGuardEnabledViaSettings() {
+// Resolve {baseUrl, token}: environment variables (JFROG_URL/JFROG_ACCESS_TOKEN,
+// or legacy JF_*) are checked first; if either is missing, fall back to the
+// JFrog CLI's default configured server via `jf config export`. Returns null
+// when neither source yields usable credentials.
+function resolveCredentials() {
   const baseUrl = env("JFROG_URL", "JF_URL");
   const token = env("JFROG_ACCESS_TOKEN", "JF_ACCESS_TOKEN");
-  if (!baseUrl) {
-    debug("JFROG_URL/JF_URL is not set; skipping settings check");
+  if (baseUrl && token) {
+    debug("Resolved credentials from environment variables");
+    return { baseUrl, token };
+  }
+
+  // `jf config export` emits the default server as a base64-encoded JSON token.
+  let configToken;
+  try {
+    configToken = execFileSync("jf", ["config", "export"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1500,
+    }).trim();
+  } catch (error) {
+    debug(`'jf config export' failed (jf not on PATH or no server configured): ${error.message}`);
+    return null;
+  }
+
+  // The token is a base64-encoded JSON blob containing the server's url,
+  // accessToken, and serverId — decode and validate it before using it.
+  let cfg;
+  try {
+    cfg = JSON.parse(Buffer.from(configToken, "base64").toString("utf8"));
+  } catch (error) {
+    debug(`Could not decode the jf Config Token: ${error.message}`);
+    return null;
+  }
+
+  if (!cfg?.url || !cfg?.accessToken) {
+    debug("jf Config Token did not contain a usable url + accessToken");
+    return null;
+  }
+
+  debug(`Resolved credentials via 'jf config export' (serverId: ${cfg.serverId ?? "<unknown>"})`);
+  return { baseUrl: cfg.url, token: cfg.accessToken };
+}
+
+async function isAgentGuardEnabledViaSettings() {
+  const credentials = resolveCredentials();
+  if (!credentials) {
+    debug("No JFrog credentials resolved; skipping settings check");
     return false;
   }
-  if (!token) {
-    debug("JFROG_ACCESS_TOKEN/JF_ACCESS_TOKEN is not set; skipping settings check");
-    return false;
-  }
+  const { baseUrl, token } = credentials;
 
   const url =
       baseUrl.replace(/\/+$/, "") +
@@ -42,7 +84,7 @@ async function isAgentGuardEnabledViaSettings() {
   debug(`Fetching agent guard setting from ${url}`);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 4000);
   try {
     const response = await fetch(url, {
       method: "GET",
@@ -59,7 +101,7 @@ async function isAgentGuardEnabledViaSettings() {
     }
     const data = await response.json();
     const enabled = data?.settings?.mcpGatewayPluginEnabled?.value === true;
-    debug(`Settings response indicates Agent Guard enabled=${enabled}`);
+    debug(`Settings response indicates agent guard enabled=${enabled}`);
     return enabled;
   } catch (error) {
     const reason = error?.name === "AbortError" ? "timeout" : error?.message ?? "unknown error";
@@ -72,30 +114,7 @@ async function isAgentGuardEnabledViaSettings() {
 
 if (forceDisabled) {
   debug("Force-disable flag is set.");
-  process.exit(0);
-}
-
-// Validate JFROG_URL early to surface misconfigurations before the MCP server
-// attempts to connect and fails with a confusing DNS or double-slash error.
-if (!process.env.JFROG_URL) {
-  const missingUrlWarning = "WARNING: JFROG_URL is not set. The JFrog MCP server will be unreachable — set JFROG_URL to your Artifactory base URL (e.g. https://mycompany.jfrog.io) and restart.";
-  log(missingUrlWarning);
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: `IMPORTANT: Immediately tell the user: "${missingUrlWarning}"`,
-    },
-  }));
-  process.exit(0);
-} else if (process.env.JFROG_URL.endsWith("/")) {
-  const trailingSlashWarning = "WARNING: JFROG_URL has a trailing slash. This produces a double-slash in the MCP URL and will silently fail — remove the trailing slash and restart.";
-  log(trailingSlashWarning);
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "SessionStart",
-      additionalContext: `IMPORTANT: Immediately tell the user: "${trailingSlashWarning}"`,
-    },
-  }));
+  process.stdout.write("{}");
   process.exit(0);
 }
 
@@ -103,14 +122,12 @@ if (forceEnabled) {
   debug("Force-enable flag is set.");
 } else if (!(await isAgentGuardEnabledViaSettings())) {
   debug("Agent Guard not enabled; exiting without injecting instructions");
+  process.stdout.write("{}");
   process.exit(0);
 }
 
 debug("Injecting instructions");
 
-// Derive the plugin root from this script's own location instead of relying
-// on CLAUDE_PLUGIN_ROOT, which Claude Code interpolates into the hook command
-// string but does not always export to the subprocess.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 let template;
@@ -119,7 +136,9 @@ try {
     path.join(root, "templates", "jfrog-mcp-management.md"),
     "utf8",
   );
-} catch {
+} catch (error) {
+  debug(`Could not read instructions template: ${error.message}`);
+  process.stdout.write("{}");
   process.exit(0);
 }
 
