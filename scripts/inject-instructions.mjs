@@ -25,8 +25,10 @@ const forceDisabled =
 const forceEnabled =
     env("JF_AGENT_GUARD_FORCE_ENABLE") === "true";
 
-// Resolve {baseUrl, token} from env vars, falling back to the JFrog CLI's
-// default server. Returns null when nothing resolves.
+// Resolve {baseUrl, token}: environment variables (JFROG_URL/JFROG_ACCESS_TOKEN,
+// or legacy JF_*) are checked first; if either is missing, fall back to the
+// JFrog CLI's default configured server via `jf config export`. Returns null
+// when neither source yields usable credentials.
 function resolveCredentials() {
   const baseUrl = env("JFROG_URL", "JF_URL");
   const token = env("JFROG_ACCESS_TOKEN", "JF_ACCESS_TOKEN");
