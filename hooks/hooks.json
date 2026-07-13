@@ -7,6 +7,11 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs\"",
             "timeout": 7
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-jfrog-login-rule.mjs\"",
+            "timeout": 7
           }
         ]
       }
