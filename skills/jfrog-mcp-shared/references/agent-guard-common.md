@@ -1,0 +1,59 @@
+# Agent guard common — registry URL & pre-flight
+
+Shared reference for the `jfrog-mcp-install` and `jfrog-mcp-list` skills. Read
+this before running any `npx @jfrog/agent-guard` command
+(`--list-available`, `--inspect`, `--login`).
+
+Terminology used throughout these skills:
+
+- **project (workspace)** — the current working directory (CWD) where Claude
+  Code is running. Project-level config lives in `.mcp.json` in the project
+  root.
+- **JFrog project key** (`<JFROG_PROJECT_KEY>`) — the key identifying a JFrog
+  project. This is distinct from the workspace/CWD.
+
+## Registry URL
+
+Wherever `<REGISTRY_URL>` appears, substitute the value of the
+`JFROG_AGENT_GUARD_REPO` environment variable if it is set. Otherwise use
+`https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/`.
+
+## Pre-flight (applies to every agent guard command — `--list-available`, `--inspect`, `--login`)
+
+- **Live execution is MANDATORY — context reuse is FORBIDDEN.** Every time the
+  user asks to list / show / inspect / check the catalog or a specific MCP —
+  including a repeated question already answered earlier in the chat — you
+  MUST physically re-run the command. NEVER reuse, copy, or re-display output
+  from previous turns or context history; the catalog, headers, and required
+  inputs change between prompts. (Applies to `--list-available` and
+  `--inspect` only — NOT `--login`, which would re-open the OAuth browser, and
+  NOT reading local config for *installed* state.)
+
+- **`<JFROG_PROJECT_KEY>` is always mandatory.** Resolve via the project
+  chain: existing `mcpServers` entries (`_JF_ARGS` → `project=`) → `JF_PROJECT`
+  env var → ASK the user. If none resolves, STOP and ask — NEVER guess, NEVER
+  assume `default`, NEVER invent JFrog project keys.
+
+- **`<SERVER_ID>` is auto-resolvable.** Resolve in order, stop at the first
+  match:
+  1. An existing `mcpServers` entry's `--server <ID>` (project or user
+     config) — reuse it.
+  2. `JFROG_URL` + `JFROG_ACCESS_TOKEN` set in the env — use them and do NOT
+     pass `--server` (the agent guard reads the env directly).
+  3. List configured servers with the jf CLI — run `jf config show
+     --format=json` (do NOT parse `~/.jfrog/jfrog-cli.conf.v6` yourself; the
+     CLI masks tokens, so its output is safe to read). Exactly one → use it;
+     two or more → use the one with `"isDefault": true`; if none is marked
+     default → ASK the user which one. Then pass `--server <ID>`.
+  4. None of the above → ask the user to run `jf c add <ID>` or export
+     `JFROG_URL` + `JFROG_ACCESS_TOKEN`, then retry.
+
+  When you resolved the ID from a jf CLI config, always pass it as
+  `--server <ID>`; when using env vars, never pass `--server`.
+- The commands need network access to the npm registry and the JFrog
+  platform. Grant the matching runtime permission (see
+  [runtime-permissions.md](runtime-permissions.md)); a corporate proxy, VPN, or
+  blocked registry can also surface as `Forbidden` / `403` errors.
+
+Once both are determined, proceed. If either is still unknown, STOP — do NOT
+run the command with guesses.
