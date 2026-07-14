@@ -43,7 +43,10 @@ node "${CLAUDE_SKILL_DIR}/../../scripts/agent-guard-check.mjs"
 1. Delete the entry from `mcpServers` in the file it was installed in
    (`.mcp.json` in the project root, or top-level `~/.claude.json` for a
    user-level install).
-2. If OAuth was used, also remove its entry from `~/.jfrog/jfrogmcp.conf.json`.
+2. Check whether OAuth was used: read `~/.jfrog/jfrogmcp.conf.json` and look
+   for a key under `servers` that matches the MCP name. If found, delete that
+   key and write the file back. If the file does not exist or the key is absent,
+   skip this step silently.
 3. Tell the user to relaunch Claude Code (`/exit`, then start `claude` again)
    so the removed entry stops loading (`mcpServers` is read at session start
    only).
