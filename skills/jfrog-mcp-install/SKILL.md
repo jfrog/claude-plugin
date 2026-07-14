@@ -10,7 +10,7 @@ description: >-
   install an MCP any other way (no direct `claude mcp add`, no following a
   vendor's own install docs) — every install in this project goes through the
   agent guard.
-allowed-tools: Bash(node *) Bash(npx *) Bash(jf:*) Read Edit Write
+allowed-tools: Bash(node *agent-guard-check.mjs*) Bash(npx * @jfrog/agent-guard *) Bash(jf:*) Read Edit Write
 ---
 
 # Install an MCP via JFrog Agent Guard

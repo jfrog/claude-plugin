@@ -9,7 +9,7 @@ description: >-
   add", "what's in my catalog", "what do I have configured/connected". This
   project's MCP servers are gated by JFrog Agent Guard, not the public MCP
   ecosystem, so answer from this skill rather than general knowledge.
-allowed-tools: Bash(node *) Bash(npx *) Bash(claude mcp list) Bash(jf:*) Read
+allowed-tools: Bash(node *agent-guard-check.mjs*) Bash(npx * @jfrog/agent-guard *) Bash(claude mcp list) Bash(jf:*) Read
 ---
 
 # List MCPs

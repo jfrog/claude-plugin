@@ -7,7 +7,7 @@ description: >-
   this project — e.g. "remove the Slack MCP", "delete the Slack config",
   "wipe the Slack tool from my workspace" — even if they only name the tool
   and don't say "MCP" explicitly.
-allowed-tools: Bash(node *) Read Edit
+allowed-tools: Bash(node *agent-guard-check.mjs*) Read Edit
 ---
 
 # Remove an MCP
