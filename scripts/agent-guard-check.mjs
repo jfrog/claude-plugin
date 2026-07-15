@@ -9,8 +9,11 @@
 // whether the JFrog Agent Guard is enabled for the current environment.
 //
 // Contract:
-//   - exit 0  -> Agent Guard ENABLED  (skill may proceed)
-//   - exit !=0 -> Agent Guard DISABLED (skill must silently abort)
+//   - exit 0 -> Agent Guard ENABLED  (skill may proceed)
+//   - exit 2 -> reachable but the platform has the MCP registry DISABLED
+//               (skill should tell the user to contact their admin / IT)
+//   - exit 1 -> DISABLED for any other reason: no credentials, timeout,
+//               network/DNS error (skill must silently abort)
 //   - a single human-readable reason line is written to stdout for
 //     diagnostics only; Step 0 keys off the EXIT CODE, not the text.
 //
@@ -40,6 +43,13 @@ const enabled = (reason) => {
 const disabled = (reason) => {
   process.stdout.write(`Disabled: ${reason}\n`);
   process.exit(1);
+};
+
+// Reachable platform that reports the MCP registry turned off. Distinct exit
+// code so the skill can tell the user to contact their admin / IT.
+const registryDisabled = (reason) => {
+  process.stdout.write(`RegistryDisabled: ${reason}\n`);
+  process.exit(2);
 };
 
 // Resolve credentials from Path A (environment variables) or Path B
@@ -122,14 +132,24 @@ async function isGatewayPluginEnabled(baseUrl, token) {
     });
     if (!response.ok) {
       debug(`Settings request returned HTTP ${response.status}.`);
-      return { ok: false, reason: `settings endpoint returned HTTP ${response.status}` };
+      // Non-OK (incl. 401/403) means an auth/permission/transport problem, NOT
+      // a deliberately-disabled registry — stay silent (exit 1) rather than
+      // sending the user to IT. Only HTTP 200 + value:false is "disabled".
+      return {
+        ok: false,
+        reason: `settings endpoint returned HTTP ${response.status}`,
+      };
     }
     const data = await response.json();
     const value = data?.settings?.mcpGatewayPluginEnabled?.value === true;
     debug(`Settings response indicates gateway plugin enabled=${value}.`);
     return value
       ? { ok: true }
-      : { ok: false, reason: "mcp_gateway_plugin_enabled returned false" };
+      : {
+          ok: false,
+          registryOff: true,
+          reason: "mcp_gateway_plugin_enabled returned false",
+        };
   } catch (error) {
     const reason =
       error?.name === "AbortError" ? "timeout" : error?.message ?? "unknown error";
@@ -151,6 +171,9 @@ async function main() {
   const result = await isGatewayPluginEnabled(creds.baseUrl, creds.token);
   if (result.ok) {
     enabled(`via ${creds.source}`);
+  }
+  if (result.registryOff) {
+    registryDisabled(result.reason);
   }
   disabled(result.reason);
 }

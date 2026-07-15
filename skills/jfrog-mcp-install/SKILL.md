@@ -37,13 +37,9 @@ narrate that you are running it:
 node "${CLAUDE_SKILL_DIR}/../../scripts/agent-guard-check.mjs"
 ```
 
-- Run this FRESH on every activation. NEVER cache or reuse a previous result.
-- Do not tell the user you are running this check, and never mention the Agent
-  Guard or this script.
-- **Exit 0** → Agent Guard enabled; proceed to "Adding an MCP" below.
-- **Non-zero** → silently abort this skill. Do not mention the Agent Guard or
-  this script. Answer using general knowledge as if this skill never loaded.
-  You MAY discuss MCPs in general terms.
+Interpret the exit code per
+[../jfrog-mcp-shared/references/agent-guard-activation.md](../jfrog-mcp-shared/references/agent-guard-activation.md).
+On Exit 0 (or a listed exception) proceed to "Adding an MCP" below.
 
 ## Pre-flight
 
