@@ -31,17 +31,21 @@ Then restart Claude Code (or run `/reload-plugins`) and open a **new session**.
 
 Verify: run `/plugin` or `claude plugin list` — you should see **jfrog@jfrog-beta**.
 
-## Configure
+## Configure (onboarding phases)
 
-### 1. JFrog CLI and credentials
+Work through these in order. After any `agents-conf.json` change, open a **new session** (or `/reload-plugins`) so the hook reloads.
+
+### Phase 1 — JFrog CLI and credentials
 
 Ensure `jf` works and your platform URL / token are set (`jf config add` or env vars).
 
-### 2. Enable Agent Package Resolution (opt-in)
+Eager setup and resolved URLs both need **active** mode: a usable `jf` server (or platform env auth). If `jf` is missing/unconfigured, the hook injects a “routing NOT READY” notice instead and skips auto `jf setup`.
 
-Edit `~/.jfrog/agents-conf.json`. **`enabled: true` alone is not enough** — you also declare **which package managers to govern** under `defaultGlobalRepos`. Only those types are routed through Artifactory; everything else is left alone (no blocking, no public-registry rewrite).
+### Phase 2 — Enable + choose governed package types
 
-Example — govern **npm and PyPI only**; Docker, Go, Maven, etc. stay untouched:
+Edit `~/.jfrog/agents-conf.json`. **`enabled: true` alone is not enough** — also declare **which package managers to govern** under `defaultGlobalRepos`. Only those types are routed through Artifactory; everything else stays out of scope.
+
+Example — govern **npm and PyPI only**:
 
 ```json
 {
@@ -55,53 +59,86 @@ Example — govern **npm and PyPI only**; Docker, Go, Maven, etc. stay untouched
 }
 ```
 
-Optional: add `"enforceOnStartup": ["npm", "pypi"]` (or `true` for all governed types) to run `jf setup` automatically in the background on session start.
+Replace repo keys with ones that exist on your Artifactory. Optional: a project can add/override types via `.jfrog/local/package-resolution.json` (union with the global list).
 
-A project can add types via `.jfrog/local/package-resolution.json` (union with the global list). Full reference: [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md).
+### Phase 3 — Zero-touch PM setup (`enforceOnStartup`)
 
-After changing this file, open a **new session** (or `/reload-plugins`) so the hook picks it up.
+Advisory routing (Phase 2) tells Claude which URLs to use. **Durable** PM config (`~/.npmrc`, `pip.conf`, …) still needs `jf setup`. Enable eager setup so the hook runs that automatically on session start for the types you list:
 
-## Start using it
+```json
+{
+  "packageResolution": {
+    "enabled": true,
+    "defaultGlobalRepos": {
+      "npm": "npm-virtual",
+      "pypi": "pypi-virtual"
+    },
+    "enforceOnStartup": ["npm", "pypi"]
+  }
+}
+```
+
+Notes:
+
+- Use a list of governed type names, or `"enforceOnStartup": true` for **all** governed types.
+- Only **governed + resolved** types are eligible; others are ignored (logged).
+- Runs in a **background** worker — session injection stays fast; check the injected note for “Zero-touch package-manager setup”.
+- Idempotent via `~/.jfrog/skills-cache/package-setup.json` (skips fresh successes/failures until TTL / repo / server change).
+
+**Verify Phase 3**
+
+1. Start a **new session**.
+2. Confirm the injected policy shows resolved URLs for your governed types and (when pending/done) a zero-touch status line.
+3. Check durable config, e.g. `~/.npmrc` registry points at Artifactory after `npm` is in `enforceOnStartup`.
+4. On failure or silence: `~/.jfrog/logs/agent-hooks.log` and `~/.jfrog/skills-cache/package-setup.json`.
+
+### Phase 4 — Start using it
 
 1. Confirm the plugin is active (`/plugin` or `claude plugin list`).
-2. Set `packageResolution.enabled` and declare governed types in `defaultGlobalRepos` (step above).
-3. Open a **new session** in a project that has a package manifest or ask Claude to run package commands.
+2. Phases 1–2 done (`enabled` + `defaultGlobalRepos`); Phase 3 optional but recommended for dogfooding eager setup.
+3. Open a **new session** in a project with a package manifest or ask Claude to run package commands.
+
+Full reference: [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md).
 
 ## Try it
 
-### Example A — configure a package manager (works with or without `enabled: true`)
+### Example A — manual PM setup via skill (works with or without `enabled: true`)
 
-Ask Claude in natural language:
+Ask Claude:
 
 > Configure my npm to use JFrog Artifactory
 
-This uses the **jfrog-setup-package-managers** skill (`jf setup npm`, workspace binding). It does **not** require `packageResolution.enabled`.
+Uses **jfrog-setup-package-managers** (`jf setup` + workspace binding). Honors governed scope — won’t proactively onboard ungoverned PMs unless you ask.
 
-The skill honors the session policy's **governed scope** — it won't proactively onboard package managers you haven't declared unless you ask explicitly.
+### Example B — eager setup already configured the PM
 
-### Example B — routing for a **governed** type (requires `enabled: true` + `defaultGlobalRepos`)
+With Phase 3 enabled for `npm`, start a **new session** (wait a few seconds if the note says “configuring in the background”), then ask:
 
-With the sample config above (`npm` + `pypi` governed), start a **new session** and ask:
+> Run `npx cowsay hello`
+
+**Expected:** indirect installs use durable Artifactory config from eager `jf setup` — you should **not** need to ask Claude to configure npm first.
+
+### Example C — routing for a **governed** type (requires Phases 1–2)
+
+With `npm` + `pypi` governed, start a **new session** and ask:
 
 > Run `npm install express`
 
-**Expected:** Claude routes npm through your Artifactory repo (`--registry <resolved npm URL>`), not the public registry. The injected policy should say something like **"This policy governs only: npm, pypi"**.
+**Expected:** routes through Artifactory (`--registry <resolved npm URL>`). Policy says something like **"This policy governs only: npm, pypi"**.
 
-Same for PyPI if you ask for `pip install …`.
+Same for `pip install …` if `pypi` is governed.
 
-### Example C — **ungoverned** types are left alone
+### Example D — **ungoverned** types are left alone
 
-With the same config (**no `docker` in `defaultGlobalRepos`**), ask:
+With **no `docker`** in `defaultGlobalRepos`, ask:
 
 > Run `docker pull alpine:latest`
 
-**Expected:** package resolution does **not** block or rewrite docker — docker is out of scope. Claude may pull from Docker Hub unless you separately configure docker via Example A or add `"docker": "<repo-key>"` to `defaultGlobalRepos`.
+**Expected:** no block/rewrite — docker is out of scope (may hit Docker Hub). To govern it, add `"docker": "<repo-key>"` (and optionally to `enforceOnStartup`), then start a new session.
 
-To govern docker too, add it to `defaultGlobalRepos` (and optionally `enforceOnStartup`), then start a new session — bare and explicit-host pulls should route through your Artifactory docker row.
+### Example E — disabled
 
-### Example D — disabled
-
-With `packageResolution.enabled: false`, governed routing is off entirely; Claude may use public registries unless you ask it to use JFrog explicitly.
+With `packageResolution.enabled: false`, governed routing is off; public registries are allowed unless you ask for JFrog explicitly.
 
 ## Update the plugin
 
