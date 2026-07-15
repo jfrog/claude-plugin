@@ -16,9 +16,7 @@
 //
 // Set JF_AGENT_GUARD_DEBUG=true for verbose tracing on stderr.
 
-import { readFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { execFileSync } from "node:child_process";
 import process from "node:process";
 
 const SETTINGS_PATH =
@@ -63,57 +61,47 @@ function resolveCredentials() {
   return resolveFromCliConfig();
 }
 
-function cliConfigPath() {
-  // os.homedir() resolves to %USERPROFILE% on Windows and $HOME elsewhere.
-  return path.join(os.homedir(), ".jfrog", "jfrog-cli.conf.v6");
-}
-
 function resolveFromCliConfig() {
-  const confPath = cliConfigPath();
-  let raw;
+  // `jf config export` emits the default server as a base64-encoded JSON blob
+  // containing url, accessToken, and serverId. We use the CLI rather than
+  // reading ~/.jfrog/jfrog-cli.conf.v6 directly because newer CLIs do not
+  // persist the access token in that file (and the platform URL may be stored
+  // only as an /artifactory-suffixed URL there, which is wrong for /ml/core).
+  let exported;
   try {
-    raw = readFileSync(confPath, "utf8");
-  } catch {
-    debug(`No JFrog CLI config readable at ${confPath}.`);
+    exported = execFileSync("jf", ["config", "export"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+  } catch (error) {
+    debug(
+      `'jf config export' failed (jf not on PATH or no server configured): ${error?.message}`,
+    );
     return null;
   }
 
-  let conf;
+  let cfg;
   try {
-    conf = JSON.parse(raw);
-  } catch {
-    debug("JFrog CLI config is not valid JSON.");
+    cfg = JSON.parse(Buffer.from(exported, "base64").toString("utf8"));
+  } catch (error) {
+    debug(`Could not decode the jf config export token: ${error?.message}`);
     return null;
   }
 
-  const servers = Array.isArray(conf?.servers) ? conf.servers : [];
-  if (servers.length === 0) {
-    debug("JFrog CLI config contains no servers.");
-    return null;
-  }
-
-  // Prefer the explicit default; fall back to the sole server when unambiguous.
-  const server =
-    servers.find((s) => s?.isDefault === true) ??
-    (servers.length === 1 ? servers[0] : null);
-  if (!server) {
-    debug("Multiple JFrog CLI servers and no default; cannot auto-resolve.");
-    return null;
-  }
-
-  // conf.v6 stores the platform/JPD URL under `url`.
-  const baseUrl = server.url ?? server.artifactoryUrl;
-  const token = server.accessToken;
+  // `url` is the platform/JPD root — the base the /ml/core settings path needs.
+  const baseUrl = cfg?.url;
+  const token = cfg?.accessToken;
   if (!baseUrl) {
-    debug("Default JFrog CLI server has no URL.");
+    debug("Exported JFrog CLI config has no platform URL.");
     return null;
   }
   if (!token) {
-    debug("Default JFrog CLI server has no access token (bearer auth needed).");
+    debug("Exported JFrog CLI config has no access token (bearer auth needed).");
     return null;
   }
 
-  const id = server.serverId ?? "default";
+  const id = cfg?.serverId ?? "default";
   return { baseUrl, token, source: `JF CLI config (server '${id}')` };
 }
 
