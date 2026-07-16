@@ -16,7 +16,18 @@ Internal dogfooding branch **`feature/package-resolution`**. Not on the public m
 
 - [Claude Code CLI](https://code.claude.com/docs) (`claude` on PATH)
 - **Node.js** ≥ 14 on `PATH` (hooks run via `node`)
-- **`jf` CLI** configured (`jf config add`) or `JFROG_URL` + `JFROG_ACCESS_TOKEN`
+- **`jf` CLI** configured (`jf config add`) for **active** routing — see below
+
+### Identity / environment variables
+
+Agent Package Resolution identity comes **only** from `jf config` (server URL + token in the CLI).
+
+| Source | Role |
+|--------|------|
+| `jf config add` | **Required** for active mode (resolved URLs, eager `jf setup`) |
+| `JFROG_PLATFORM_URL` | **Optional hint** in the “routing NOT READY” notice when `jf` is missing — does **not** activate routing |
+| `JFROG_ACCESS_TOKEN` | **Ignored** by Package Resolution |
+| `JFROG_URL` | **Ignored** by Package Resolution |
 
 ## Install
 
@@ -29,7 +40,15 @@ This registers the local marketplace, installs `jfrog@jfrog-beta`, and enables i
 
 Then restart Claude Code (or run `/reload-plugins`) and open a **new session**.
 
-Verify: run `/plugin` or `claude plugin list` — you should see **jfrog@jfrog-beta**.
+### Verify install (SessionStart)
+
+Ask in a **new session**:
+
+> what are the jfrog instruction you received in sessionstart (show as is)
+
+With Package Resolution enabled and `jf` configured, you should see the injected **Package Resolution — Artifactory First** policy verbatim. If `jf` is missing, you should see the **routing NOT READY** notice instead.
+
+Also confirm `/plugin` or `claude plugin list` shows **jfrog@jfrog-beta**.
 
 ## Configure (onboarding phases)
 
@@ -37,9 +56,9 @@ Work through these in order. After any `agents-conf.json` change, open a **new s
 
 ### Phase 1 — JFrog CLI and credentials
 
-Ensure `jf` works and your platform URL / token are set (`jf config add` or env vars).
+Ensure `jf` is installed and configured (`jf config add`). Active mode reads identity **only** from `jf config` — not from `JFROG_ACCESS_TOKEN` / `JFROG_URL`.
 
-Eager setup and resolved URLs both need **active** mode: a usable `jf` server (or platform env auth). If `jf` is missing/unconfigured, the hook injects a “routing NOT READY” notice instead and skips auto `jf setup`.
+Eager setup and resolved URLs both need **active** mode: a usable `jf` server. If `jf` is missing/unconfigured, the hook injects a “routing NOT READY” notice instead and skips auto `jf setup`. If `JFROG_PLATFORM_URL` is set in the IDE launch env, that URL appears in the notice as a setup hint.
 
 ### Phase 2 — Enable + choose governed package types
 
@@ -98,7 +117,7 @@ Notes:
 2. Phases 1–2 done (`enabled` + `defaultGlobalRepos`); Phase 3 optional but recommended for dogfooding eager setup.
 3. Open a **new session** in a project with a package manifest or ask Claude to run package commands.
 
-Full reference: [configure-agent-package-resolution](https://github.jfrog/jfrog-agent-hooks/blob/master/docs/configure-agent-package-resolution.md).
+Full reference: [configure-agent-package-resolution](https://github.jfrog.info/JFROG/jfrog-agent-hooks/blob/master/docs/product/configure-agent-package-resolution.md).
 
 ## Try it
 
@@ -175,3 +194,13 @@ rm -rf ~/.jfrog/claude-plugin-beta
 Re-install the public marketplace plugin with `/plugin install jfrog` if needed.
 
 Does **not** remove `~/.jfrog/agents-conf.json` — edit or delete that file manually if you want to turn off package resolution.
+
+## Troubleshooting
+
+**No JFrog SessionStart instructions**
+
+Confirm the plugin is listed (`claude plugin list` → `jfrog@jfrog-beta`), run `/reload-plugins`, open a **new session**, and re-ask the [SessionStart verify](#verify-install-sessionstart) prompt.
+
+**Still on “routing NOT READY” after setting env tokens**
+
+Package Resolution does **not** use `JFROG_ACCESS_TOKEN` or `JFROG_URL`. Run `jf config add` (and ensure `jf` is on `PATH`). `JFROG_PLATFORM_URL` only affects the hint text in the notice.
