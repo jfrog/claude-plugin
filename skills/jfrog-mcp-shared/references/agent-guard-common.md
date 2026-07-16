@@ -38,18 +38,22 @@ Wherever `<REGISTRY_URL>` appears, substitute the value of the
   match:
   1. An existing `mcpServers` entry's `--server <ID>` (project or user
      config) — reuse it.
-  2. `JFROG_URL` + `JFROG_ACCESS_TOKEN` set in the env — use them and do NOT
-     pass `--server` (the agent guard reads the env directly).
+  2. `JFROG_URL` + `JFROG_ACCESS_TOKEN` set in the env (the Step 0 check and the
+     agent guard also accept the legacy `JF_URL` + `JF_ACCESS_TOKEN` pair as a
+     fallback) — use them and do NOT pass `--server` (the agent guard reads the
+     env directly).
   3. List configured servers with the jf CLI — run `jf config show
      --format=json` (do NOT parse `~/.jfrog/jfrog-cli.conf.v6` yourself; the
      CLI masks tokens, so its output is safe to read). Exactly one → use it;
      two or more → use the one with `"isDefault": true`; if none is marked
      default → ASK the user which one. Then pass `--server <ID>`.
   4. None of the above → ask the user to run `jf c add <ID>` or export
-     `JFROG_URL` + `JFROG_ACCESS_TOKEN`, then retry.
+     `JFROG_URL` + `JFROG_ACCESS_TOKEN` (or the legacy `JF_URL` +
+     `JF_ACCESS_TOKEN`), then retry.
 
-  When you resolved the ID from a jf CLI config, always pass it as
-  `--server <ID>`; when using env vars, never pass `--server`.
+  When the ID came from an existing `mcpServers` entry or jf config, always pass
+  it as `--server <ID>`; only on the `JFROG_URL`+token env path, never pass
+  `--server`.
 - The commands need network access to the npm registry and the JFrog
   platform. Grant the matching runtime permission (see
   [runtime-permissions.md](runtime-permissions.md)); a corporate proxy, VPN, or
