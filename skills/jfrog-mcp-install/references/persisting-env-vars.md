@@ -16,15 +16,27 @@ and fall back to asking the user whenever either is ambiguous.
 echo "$SHELL"
 ```
 
+`$SHELL` reports the user's default *login* shell, which is not necessarily the
+shell that launched Claude Code (e.g. a bash session started from a zsh login
+shell). Prefer detecting the actual running/parent shell when you can (e.g. the
+process that started Claude); use `$SHELL` only as a fallback, and **ask the
+user** whenever the running shell — or its startup file — can't be determined
+unambiguously.
+
 - Basename ends in `sh` (`bash`, `zsh`, `ksh`, `dash`, `ash`, `sh`, ...) or any
   other POSIX-compatible shell → **POSIX family**: `export VAR_NAME="<value>"`.
   This covers virtually every Unix shell except fish, so don't special-case
   bash vs. zsh vs. anything else in this family — the export syntax is
   identical.
 - Basename is `fish` → **fish family**: `set -gx VAR_NAME "<value>"`.
-- No `$SHELL` (native Windows session, PowerShell/CMD) → **Windows**: persist
-  with `setx VAR_NAME "<value>"` (sets it for future sessions; the current one
-  still needs the in-session equivalent, `$env:VAR_NAME` / `set VAR_NAME`).
+- No `$SHELL` (native Windows session, PowerShell/CMD) → **Windows**: for
+  **non-secret** values persist with `setx VAR_NAME "<value>"` (sets it for
+  future sessions; the current one still needs the in-session equivalent,
+  `$env:VAR_NAME` / `set VAR_NAME`). Do **not** use `setx` for secrets — it
+  puts the value on the command line (visible in process listings / command
+  history). For secret values, direct the user to set it via the Windows
+  environment-variable UI (System Properties → Environment Variables) or a
+  secret manager, and keep the in-session example session-scoped.
 - Anything that doesn't clearly match one of the above → ask the user which
   family applies rather than guessing.
 

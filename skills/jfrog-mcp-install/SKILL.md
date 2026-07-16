@@ -1,16 +1,11 @@
 ---
 name: jfrog-mcp-install
 description: >-
-  Install or add an MCP server to Claude Code through the JFrog Agent Guard
-  (npx @jfrog/agent-guard). Make sure to use this skill whenever the user asks
-  to install, add, set up, enable, or configure an MCP server or tool for this
-  project — e.g. "install the Slack MCP", "add the GitHub MCP", "set up Jira",
-  "enable Notion" — even if they only name the tool and don't say "MCP" or
-  "install" explicitly. Also use this to browse the JFrog MCP catalog. Never
-  install an MCP any other way (no direct `claude mcp add`, no following a
-  vendor's own install docs) — every install in this project goes through the
-  agent guard.
-allowed-tools: Bash(node *agent-guard-check.mjs*) Bash(npx * @jfrog/agent-guard *) Bash(jf:*) Read Edit Write
+  Install, add, set up, enable, or configure an MCP server or tool for this
+  project via the JFrog Agent Guard (npx @jfrog/agent-guard) — e.g. "install
+  the Slack MCP", "add GitHub", "set up Jira". Also browses the JFrog MCP
+  catalog. Never install an MCP any other way.
+allowed-tools: Bash(node *agent-guard-check.mjs*), Bash(npx * @jfrog/agent-guard *), Bash(jf:*), Read, Edit, Write
 ---
 
 # Install an MCP via JFrog Agent Guard
@@ -55,12 +50,8 @@ agent guard command runs.
 can I install" — your FIRST action is to show them the catalog so they can
 pick:
 
-1. Resolve server (Server ID `<SERVER_ID>` or URL `JFROG_URL`) and
-   `<JFROG_PROJECT_KEY>` per the Pre-flight rules. Server: auto-use the single
-   jf CLI config's serverId as the server ID, or the `JFROG_URL` env var as the
-   URL if unambiguous; only ask when there are multiple or no jf configs and no
-   env vars. Project: ask unless `JF_PROJECT` is set, or it's already in an
-   existing `mcpServers` entry.
+1. Resolve server and `<JFROG_PROJECT_KEY>` per the Pre-flight rules (see Step 1
+   below).
 2. Run the `jfrog-mcp-list` skill → "Available to install" with that server +
    JFrog project key and present the result as a numbered table.
 3. Wait for the user to pick. Only after they pick do you proceed to Step 1
@@ -75,36 +66,13 @@ unless absolutely necessary:
 
 ### Step 1: Determine JFrog project key, server, and target config file
 
-**Server ID**
-
-1. Any existing `mcpServers` entry in `.mcp.json` (project) or `~/.claude.json`
-   (top-level user scope, or `projects.<path>.mcpServers`) — take the value
-   after `--server` in `args`.
-2. Else `JFROG_URL` env var set (with `JFROG_ACCESS_TOKEN`) — the agent guard
-   can resolve credentials from these directly; DO NOT pass `--server` as that
-   would make the agent guard try to parse the server details from the jf CLI
-   configuration.
-3. Else list configured servers with the jf CLI — run `jf config show
-   --format=json` (do NOT parse `~/.jfrog/jfrog-cli.conf.v6` yourself; the CLI
-   masks tokens, so its output is safe to read). From the result:
-   - exactly one server → use it without asking.
-   - two or more → use the one with `"isDefault": true`; if none is marked
-     default, list the `serverId`s and ASK the user which one.
-4. Else (file missing, empty, or unreadable, and no `JFROG_URL`) ask the user
-   to either run `jf c add <ID>` or export `JFROG_URL` + `JFROG_ACCESS_TOKEN`,
-   then retry.
-
-NEVER try multiple servers — pick one. When you resolved the ID from a jf CLI
-config, always pass it as `--server <ID>` in every agent guard invocation;
-when using env vars, never pass `--server`.
-
-**JFrog project key**
-
-1. From existing `mcpServers` entries, `_JF_ARGS` → `project=` value.
-2. Else `JF_PROJECT` env var.
-3. Else ask. NEVER guess, NEVER assume "default", NEVER use the server ID,
-   NEVER infer the JFrog project key from other sources, NEVER make up project
-   keys, ALWAYS ask.
+**Server ID and JFrog project key** — resolve both per the Pre-flight rules in
+[../jfrog-mcp-shared/references/agent-guard-common.md](../jfrog-mcp-shared/references/agent-guard-common.md)
+(server chain: existing `mcpServers` `--server` → `JFROG_URL`+token env → jf CLI
+config → ask; project chain: `_JF_ARGS`→`project=` → `JF_PROJECT` → ask). Pass
+`--server <ID>` in every agent guard invocation whenever the ID came from an
+existing `mcpServers` entry or jf config; omit `--server` only on the
+`JFROG_URL`+token env path. NEVER guess or assume `default` for the project key.
 
 **Target config file**
 
@@ -136,6 +104,11 @@ npx --yes \
   --project <JFROG_PROJECT_KEY> \
   --mcp <MCP_NAME>
 ```
+
+**`--server` is conditional** (applies to `--inspect` here, the config entry,
+and `--login`): pass `--server <SERVER_ID>` whenever the ID came from an existing
+`mcpServers` entry or jf config; omit it only on the `JFROG_URL`+token env path
+(no empty/placeholder value).
 
 From the output JSON, extract (keep BOTH required AND optional):
 
@@ -209,8 +182,13 @@ and may block on a no-TTY prompt. Use `"type": "stdio"` — never `"http"`,
 
 Notes:
 
-- If a required `${VAR}` is unset, Claude Code refuses to parse the entry.
-  Confirm the user exported it before they relaunch.
+- `--server` in `args` is conditional (see Step 2): keep it whenever the ID came
+  from an existing `mcpServers` entry or jf config; drop both array elements only
+  on the `JFROG_URL`+token env path.
+- If a required `${VAR}` is unset, Claude Code still loads the entry but shows a
+  missing-variable warning (the literal `${VAR}` is left in place), and any tool
+  call that needs it fails at runtime. Confirm the user exported it before they
+  relaunch.
 - For `Bearer`-prefixed headers, either include the prefix in the env var or
   hard-code it: `"Bearer ${TOKEN}"`.
 

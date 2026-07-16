@@ -15,10 +15,14 @@ Guard or this script. Key off the EXIT CODE, not the text it prints.
 
 ## Exceptions — proceed even on a non-zero exit
 
+These exceptions apply ONLY to "other non-zero" exits (no credentials,
+timeout, network/DNS error). They do NOT apply to Exit 2: the platform
+explicitly reported the MCP registry is disabled, so no agent guard command
+can succeed — stop after telling the user to contact their admin/IT, even if
+an existing `mcpServers` entry is present.
+
 Continue with the skill when either holds:
 
 - The user explicitly asked to use the JFrog Agent Guard anyway; or
 - The workspace is already on the Agent Guard — an existing `mcpServers` entry
   in `.mcp.json` or `~/.claude.json` runs `@jfrog/agent-guard`.
-
-On Exit 2, still surface the admin/IT note first.

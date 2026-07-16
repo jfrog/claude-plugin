@@ -1,15 +1,11 @@
 ---
 name: jfrog-mcp-list
 description: >-
-  List MCP servers via the JFrog Agent Guard — both the catalog of MCPs
-  available to install and the MCPs currently configured in Claude Code. Make
-  sure to use this skill whenever the user asks anything about MCP servers or
-  tools in this project, even if they don't say "MCP" explicitly — e.g. "what
-  can I install here", "what tools are already set up", "what am I allowed to
-  add", "what's in my catalog", "what do I have configured/connected". This
-  project's MCP servers are gated by JFrog Agent Guard, not the public MCP
-  ecosystem, so answer from this skill rather than general knowledge.
-allowed-tools: Bash(node *agent-guard-check.mjs*) Bash(npx * @jfrog/agent-guard *) Bash(claude mcp list) Bash(jf:*) Read
+  List MCP servers via the JFrog Agent Guard — both the catalog available to
+  install and the ones currently configured in Claude Code. Use whenever the
+  user asks about MCPs or tools in this project (e.g. "what can I install",
+  "what's set up", "what's in my catalog"), even without saying "MCP".
+allowed-tools: Bash(node *agent-guard-check.mjs*), Bash(npx * @jfrog/agent-guard *), Bash(claude mcp list), Bash(jf:*), Read
 ---
 
 # List MCPs
@@ -98,8 +94,12 @@ The `name` column is the install identifier (the value you pass to
 `--inspect --mcp` and to install); `packageName` is NOT a separate column —
 for remote/http MCPs there is no package name, so `name` is the display name.
 
-3. Filter out any `name` already present in the installed list (compare against
-   `mcp=` in `_JF_ARGS`). Mark the rest as available to install.
+3. **Mark rows already installed rather than dropping them.** The catalog
+   `name` column is the display/install identifier, but the installed config
+   key and `mcp=` in `_JF_ARGS` are the resolved `spec.packageName` — for
+   local MCPs those can differ. Mark a row `(installed)` if EITHER matches
+   any installed entry's JSON key OR its `mcp=` value; still show the row so
+   the user can see the full catalog and reinstall or update.
 
 ## Key rules & troubleshooting
 

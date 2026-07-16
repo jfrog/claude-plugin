@@ -141,15 +141,20 @@ async function isGatewayPluginEnabled(baseUrl, token) {
       };
     }
     const data = await response.json();
-    const value = data?.settings?.mcpGatewayPluginEnabled?.value === true;
+    const value = data?.settings?.mcpGatewayPluginEnabled?.value;
     debug(`Settings response indicates gateway plugin enabled=${value}.`);
-    return value
-      ? { ok: true }
-      : {
-          ok: false,
-          registryOff: true,
-          reason: "mcp_gateway_plugin_enabled returned false",
-        };
+    if (value === true) return { ok: true };
+    if (value === false) {
+      return {
+        ok: false,
+        registryOff: true,
+        reason: "mcp_gateway_plugin_enabled returned false",
+      };
+    }
+    return {
+      ok: false,
+      reason: "settings endpoint returned an invalid gateway-plugin setting",
+    };
   } catch (error) {
     const reason =
       error?.name === "AbortError" ? "timeout" : error?.message ?? "unknown error";

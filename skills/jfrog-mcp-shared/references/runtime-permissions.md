@@ -10,8 +10,8 @@ Step 0 check returns a false "disabled" result.
 | Network                         | `allowed-tools: Bash(node *) Bash(npx *)` + host allowlist |
 | Network + `~/.jfrog/` write     | same + filesystem allowlist for `~/.jfrog/`              |
 
-- **Network** covers: the Step 0 check (`agent-guard-check.mjs`), `--inspect`,
-  and `--list-available`.
+- **Network** covers: the Step 0 check (`agent-guard-check.mjs`),
+  `--inspect`, and `--list-available`.
 - **Network + `~/.jfrog/` write** covers operations that also persist or remove
   tokens under `~/.jfrog/` — OAuth `--login` (writes
   `~/.jfrog/jfrogmcp.conf.json`) and removing that cached entry.
