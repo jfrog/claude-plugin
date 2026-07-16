@@ -1,3 +1,4 @@
+# Copyright (c) JFrog Ltd. 2026
 name: Release
 
 on:
@@ -15,11 +16,13 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Check out the repository with full history for tag inspection
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Inspect the commit message for a [major], [minor], or [patch] release tag
       - name: Detect release tag in commit message
         id: detect
         run: |
@@ -32,6 +35,7 @@ jobs:
             echo "triggered=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Calculate the next semantic version based on the detected release tag
       - name: Compute next version
         if: steps.detect.outputs.triggered == 'true'
         id: version
@@ -47,6 +51,7 @@ jobs:
           esac
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
+      # Write the new version into VERSION and .claude-plugin/plugin.json
       - name: Update VERSION and JSON files
         if: steps.detect.outputs.triggered == 'true'
         run: |
@@ -55,6 +60,7 @@ jobs:
           jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json
           mv /tmp/plugin.json .claude-plugin/plugin.json
 
+      # Commit the version bump, create a git tag, and push both to origin
       - name: Commit, tag, and push
         if: steps.detect.outputs.triggered == 'true'
         run: |
@@ -66,10 +72,12 @@ jobs:
           git tag "v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
 
+      # Zip the repository contents into a release artifact
       - name: Package release artifact
         if: steps.detect.outputs.triggered == 'true'
         run: zip -r release.zip . --exclude ".git/*" --exclude ".github/*"
 
+      # Publish a GitHub Release with the packaged artifact and auto-generated notes
       - name: Create GitHub Release
         if: steps.detect.outputs.triggered == 'true'
         env:
