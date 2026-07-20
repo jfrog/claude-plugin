@@ -2,9 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// stdout is reserved for the caller's own response, so all output here goes
-// to stderr, never stdout.
-
 function stringifyMessage(message) {
   if (typeof message === "string") return message;
   // JSON.stringify can throw (circular refs, BigInt); fall back to String(),
@@ -16,11 +13,28 @@ function stringifyMessage(message) {
   }
 }
 
+/**
+ * Writes a message to stderr. stdout is reserved for the caller's own
+ * response, so all logging here goes to stderr, never stdout.
+ *
+ * @returns {void}
+ * @example
+ * logToStderr("hook started");
+ */
 export function logToStderr(message) {
   process.stderr.write(stringifyMessage(message) + "\n");
 }
 
-// Lets multiple call sites share stderr while staying distinguishable.
+/**
+ * Builds a logger that prefixes every message, letting multiple call sites
+ * share stderr while staying distinguishable.
+ *
+ * @returns {(message: any) => void}
+ * @example
+ * const log = createLogger("Pre");
+ * log("config fetched");
+ * // stderr: [Pre] config fetched
+ */
 export function createLogger(prefix) {
   return (message) => {
     const text = stringifyMessage(message);

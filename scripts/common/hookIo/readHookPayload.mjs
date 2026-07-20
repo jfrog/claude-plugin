@@ -2,11 +2,22 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Reads a JSON payload from a stream (process.stdin by default). Mirrors
-// httpClient's contract: never rejects — every outcome resolves to a
-// discriminated result object:
-//   success: { ok: true, payload }
-//   failure: { ok: false, reason: "empty" | "invalid-json" | "timeout" | "stream-error", error? }
+/**
+ * Reads a JSON payload from a stream (process.stdin by default). Mirrors
+ * httpClient's contract: never rejects.
+ *
+ * @returns {Promise<
+ *   | { ok: true, payload: any }
+ *   | { ok: false, reason: "empty" | "invalid-json" | "timeout" | "stream-error", error?: Error }
+ * >}
+ * @example
+ * const res = await readHookPayload();
+ * if (res.ok) {
+ *   // res.payload
+ * } else {
+ *   // res.reason, res.error
+ * }
+ */
 export function readHookPayload({ stream = process.stdin, timeoutMs = 5000 } = {}) {
   return new Promise((resolve) => {
     const chunks = [];

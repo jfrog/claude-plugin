@@ -4,28 +4,34 @@
 
 import https from "node:https";
 
-// A minimal, dependency-free HTTPS client. Never throws or rejects — every
-// outcome resolves to a discriminated result object:
-//   success: { ok: true, status, headers, body }
-//   failure: { ok: false, reason: "invalid-url" | "invalid-body" | "network" | "timeout", error }
-// Does not judge HTTP status semantics (e.g. 500 vs 200) — that is
-// retryWithBackoff's job.
-
 function hasHeader(headers, name) {
   const lower = name.toLowerCase();
   return Object.keys(headers).some((key) => key.toLowerCase() === lower);
 }
 
+/**
+ * Minimal, dependency-free HTTPS client. Never throws or rejects; every
+ * outcome resolves to a discriminated result object. Does not judge HTTP
+ * status semantics (e.g. 500 vs 200) - that is retryWithBackoff's job.
+ *
+ * @returns {Promise<
+ *   | { ok: true, status: number, headers: object, body: string }
+ *   | { ok: false, reason: "invalid-url" | "invalid-body" | "network" | "timeout", error: Error }
+ * >}
+ * @example
+ * const res = await httpRequest({ url: "https://example.com" });
+ * if (res.ok) {
+ *   // res.status, res.headers, res.body
+ * } else {
+ *   // res.reason, res.error
+ * }
+ */
 export function httpRequest({
   url,
   method = "GET",
   headers = {},
   body,
   token,
-  // Short per-request timeout per the beta spec (§D2 / Non-Functional): a
-  // conservative fallback, well under the hook-level caps. Hot-path callers
-  // (Stop's batched send, Pre's config GET) pass a smaller value sized to fit
-  // their retry budget beneath the 3s Stop cap.
   timeoutMs = 2000,
   tls,
   // Injectable for tests; defaults to the real https.request.

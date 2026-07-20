@@ -27,14 +27,22 @@ async function renameWithRetry(from, to, rename, retries, delayMs, sleep) {
   }
 }
 
-// Atomically writes `data` to `targetPath`: stage into a uniquely-named temp
-// file in the same directory, fsync it, then rename() onto the target.
-// rename() replaces atomically on POSIX and, via MoveFileEx, on Windows; the
-// bounded retry absorbs Windows' transient sharing violations so a reader
-// always sees the old complete file or the new one — same behavior on
-// Linux / macOS / Windows. Cleanup uses fs.unlink (not fs.rm) so this module
-// imposes no Node floor beyond the plugin's baseline. Unlike httpClient it may
-// throw — callers need to know when a disk write genuinely failed.
+/**
+ * Atomically writes `data` to `targetPath`: stages into a uniquely-named temp
+ * file in the same directory, fsyncs it, then rename()s onto the target.
+ * rename() replaces atomically on POSIX and, via MoveFileEx, on Windows; the
+ * bounded retry absorbs Windows' transient sharing violations so a reader
+ * always sees the old complete file or the new one - same behavior on
+ * Linux / macOS / Windows. Cleanup uses fs.unlink (not fs.rm) so this module
+ * imposes no Node floor beyond the plugin's baseline.
+ *
+ * Unlike httpClient, this may throw - callers need to know when a disk
+ * write genuinely failed.
+ *
+ * @returns {Promise<void>}
+ * @example
+ * await atomicWrite("/path/to/file.json", JSON.stringify(data));
+ */
 export async function atomicWrite(
   targetPath,
   data,

@@ -2,10 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Retries a request function with backoff. Has no knowledge of URLs, tokens,
-// or auth — only interprets an httpClient-shaped result and decides whether
-// to retry.
-
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Server statuses the beta spec (§Service Contracts) marks retryable. NOTE:
@@ -52,6 +48,18 @@ function computeDelay(result, attempt, baseDelayMs, maxDelayMs) {
   return Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
 }
 
+/**
+ * Retries a request function with backoff. Has no knowledge of URLs, tokens,
+ * or auth - only interprets an httpClient-shaped result and decides whether
+ * to retry.
+ *
+ * @returns {Promise<object>} the last result, plus `{ success: boolean, attempts: number }`
+ * @example
+ * const res = await retryWithBackoff((attempt) => httpRequest({ url }), { successStatus: 200 });
+ * if (res.success) {
+ *   // res.status, res.body, res.attempts
+ * }
+ */
 export async function retryWithBackoff(
   requestFn,
   {
