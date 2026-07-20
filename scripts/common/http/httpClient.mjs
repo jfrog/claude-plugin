@@ -12,7 +12,7 @@ function hasHeader(headers, name) {
 /**
  * Minimal, dependency-free HTTPS client. Never throws or rejects; every
  * outcome resolves to a discriminated result object. Does not judge HTTP
- * status semantics (e.g. 500 vs 200) - that is retryWithBackoff's job.
+ * status semantics (e.g. 500 vs 200).
  *
  * @returns {Promise<
  *   | { ok: true, status: number, headers: object, body: string }
@@ -33,7 +33,6 @@ export function httpRequest({
   body,
   token,
   timeoutMs = 2000,
-  tls,
   // Injectable for tests; defaults to the real https.request.
   transport = https.request,
 } = {}) {
@@ -100,9 +99,6 @@ export function httpRequest({
     const options = {
       method,
       headers: outHeaders,
-      // Escape hatch spread into the request options (e.g. { ca,
-      // rejectUnauthorized }) for internal/self-signed CAs.
-      ...(tls || {}),
     };
 
     // transport can throw synchronously (e.g. an invalid header value) —

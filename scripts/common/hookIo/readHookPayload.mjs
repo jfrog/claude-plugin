@@ -3,8 +3,8 @@
 // https://www.apache.org/licenses/LICENSE-2.0
 
 /**
- * Reads a JSON payload from a stream (process.stdin by default). Mirrors
- * httpClient's contract: never rejects.
+ * Reads a JSON payload from a stream (process.stdin by default). Never
+ * rejects.
  *
  * @returns {Promise<
  *   | { ok: true, payload: any }

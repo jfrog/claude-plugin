@@ -185,17 +185,3 @@ test("token sets Authorization; caller-supplied Authorization is not overridden"
   });
   assert.equal(calls[1].options.headers.Authorization, "Bearer caller-set");
 });
-
-test("tls option keys are spread into the transport request options", async () => {
-  const { transport, calls } = fakeTransport(
-    respondWith({ status: HTTP_OK, body: "ok" }),
-  );
-  const result = await httpRequest({
-    url: TEST_SERVER_URL,
-    tls: { ca: "fake-ca-pem" },
-    transport,
-    timeoutMs: TEST_TIMEOUT_MS,
-  });
-  assert.equal(result.ok, true);
-  assert.equal(calls[0].options.ca, "fake-ca-pem");
-});

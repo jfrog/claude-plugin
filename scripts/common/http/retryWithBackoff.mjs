@@ -50,7 +50,7 @@ function computeDelay(result, attempt, baseDelayMs, maxDelayMs) {
 
 /**
  * Retries a request function with backoff. Has no knowledge of URLs, tokens,
- * or auth - only interprets an httpClient-shaped result and decides whether
+ * or auth - only interprets a `{ ok, status }` result and decides whether
  * to retry.
  *
  * @returns {Promise<object>} the last result, plus `{ success: boolean, attempts: number }`
