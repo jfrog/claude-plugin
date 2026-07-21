@@ -2,6 +2,13 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
+import {
+  HTTP_TOO_MANY_REQUESTS,
+  HTTP_BAD_GATEWAY,
+  HTTP_SERVICE_UNAVAILABLE,
+  HTTP_GATEWAY_TIMEOUT,
+} from "./httpStatuses.mjs";
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Server statuses the beta spec (§Service Contracts) marks retryable. NOTE:
@@ -9,7 +16,12 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // only reproduce; among the 5xx only 502/503/504 are transient. 401 is the
 // token layer's concern (a single re-mint, handled by the caller), so it is
 // absent here and never retried by this helper.
-const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set([
+  HTTP_TOO_MANY_REQUESTS,
+  HTTP_BAD_GATEWAY,
+  HTTP_SERVICE_UNAVAILABLE,
+  HTTP_GATEWAY_TIMEOUT,
+]);
 
 // Permanent client-side failures a retry would only reproduce — a malformed
 // URL or an unserializable body are deterministic bugs, not transient faults.

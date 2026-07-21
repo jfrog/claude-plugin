@@ -7,10 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
 import { httpRequest } from "../http/httpClient.mjs";
-
-// Well-known HTTP status codes used across these tests.
-const HTTP_OK = 200;
-const HTTP_SERVER_ERROR = 500;
+import { HTTP_OK, HTTP_SERVER_ERROR } from "../http/httpStatuses.mjs";
 
 // A short real timeout so the timeout test exercises httpClient's own timer
 // logic while still resolving fast.

@@ -6,17 +6,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { retryWithBackoff } from "../http/retryWithBackoff.mjs";
-
-// Well-known HTTP status codes exercised across these tests.
-const HTTP_OK = 200;
-const HTTP_ACCEPTED = 202;
-const HTTP_BAD_REQUEST = 400;
-const HTTP_UNAUTHORIZED = 401;
-const HTTP_TOO_MANY_REQUESTS = 429;
-const HTTP_SERVER_ERROR = 500; // non-retryable (deterministic)
-const HTTP_BAD_GATEWAY = 502; // retryable transient 5xx
-const HTTP_SERVICE_UNAVAILABLE = 503; // retryable transient 5xx
-const HTTP_GATEWAY_TIMEOUT = 504; // retryable transient 5xx
+import {
+  HTTP_OK,
+  HTTP_ACCEPTED,
+  HTTP_BAD_REQUEST,
+  HTTP_UNAUTHORIZED,
+  HTTP_TOO_MANY_REQUESTS,
+  HTTP_SERVER_ERROR,
+  HTTP_BAD_GATEWAY,
+  HTTP_SERVICE_UNAVAILABLE,
+  HTTP_GATEWAY_TIMEOUT,
+} from "../http/httpStatuses.mjs";
 
 function mockRequest(results) {
   const state = { calls: 0 };
