@@ -10,10 +10,10 @@ import { httpRequest } from "../http/httpClient.mjs";
 import { retryWithBackoff } from "../http/retryWithBackoff.mjs";
 import { HTTP_OK, HTTP_SERVICE_UNAVAILABLE } from "../http/httpStatuses.mjs";
 
-// The isolated unit tests prove each primitive in a vacuum; this file proves the
-// composition that actually ships — real httpRequest driven by real
-// retryWithBackoff — so the `{ ok, status }` result shape one produces is
-// exactly what the other consumes.
+// The isolated unit tests prove each primitive in a vacuum; this file exercises
+// the httpClient-with-retry-backoff pairing that actually ships — real
+// httpRequest driven by real retryWithBackoff — so the `{ ok, status }` result
+// shape one produces is exactly what the other consumes.
 
 const TEST_SERVER_URL = "https://127.0.0.1:1/anything";
 const TEST_TIMEOUT_MS = 1000;
