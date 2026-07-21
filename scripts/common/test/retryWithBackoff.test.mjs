@@ -18,14 +18,6 @@ const HTTP_BAD_GATEWAY = 502; // retryable transient 5xx
 const HTTP_SERVICE_UNAVAILABLE = 503; // retryable transient 5xx
 const HTTP_GATEWAY_TIMEOUT = 504; // retryable transient 5xx
 
-// Retry-After delta-seconds sent by the server and the millisecond sleep it
-// must translate into.
-const RETRY_AFTER_SECONDS = 2;
-
-// A Retry-After far larger than the cap, used to prove it's clamped.
-const HUGE_RETRY_AFTER_SECONDS = 3600;
-const CAPPED_MAX_DELAY_MS = 3000;
-
 function mockRequest(results) {
   const state = { calls: 0 };
   const fn = async () => {
@@ -165,12 +157,14 @@ test("502/503/504 are retryable transient 5xx", async () => {
   }
 });
 
-test("Retry-After honored: 429 with retry-after:2 → sleep(2000)", async () => {
-  const { fn } = mockRequest([
+test("429 is retryable and backs off exponentially (no Retry-After honored)", async () => {
+  const { fn, state } = mockRequest([
     {
       ok: true,
       status: HTTP_TOO_MANY_REQUESTS,
-      headers: { "retry-after": String(RETRY_AFTER_SECONDS) },
+      // Even with a Retry-After present, we ignore it — the backend never sends
+      // one, and the delay must follow the pinned exponential curve regardless.
+      headers: { "retry-after": "3600" },
       body: "",
     },
     { ok: true, status: HTTP_OK, headers: {}, body: "" },
@@ -179,30 +173,10 @@ test("Retry-After honored: 429 with retry-after:2 → sleep(2000)", async () => 
 
   const result = await retryWithBackoff(fn, { successStatus: HTTP_OK, sleep });
   assert.equal(result.success, true);
+  assert.equal(state.calls, 2);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0], RETRY_AFTER_SECONDS * 1000);
-});
-
-test("Retry-After larger than maxDelayMs is capped at maxDelayMs", async () => {
-  const { fn } = mockRequest([
-    {
-      ok: true,
-      status: HTTP_TOO_MANY_REQUESTS,
-      headers: { "retry-after": String(HUGE_RETRY_AFTER_SECONDS) },
-      body: "",
-    },
-    { ok: true, status: HTTP_OK, headers: {}, body: "" },
-  ]);
-  const { sleep, calls } = mockSleep();
-
-  const result = await retryWithBackoff(fn, {
-    successStatus: HTTP_OK,
-    maxDelayMs: CAPPED_MAX_DELAY_MS,
-    sleep,
-  });
-  assert.equal(result.success, true);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0], CAPPED_MAX_DELAY_MS);
+  // First retry uses the spec-default base, not the 3600s Retry-After value.
+  assert.equal(calls[0], 200);
 });
 
 test("invalid-body reason never retried: 1 attempt, immediate failure", async () => {

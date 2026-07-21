@@ -163,6 +163,52 @@ test("header-injection-shaped throw → reason network, no throw", async () => {
   assert.ok(result.error);
 });
 
+test("object body sets Content-Type: application/json and a matching Content-Length", async () => {
+  const { transport, calls } = fakeTransport(
+    respondWith({ status: HTTP_OK, body: "ok" }),
+  );
+  const body = { hello: "world", n: 42 };
+
+  await httpRequest({
+    url: TEST_SERVER_URL,
+    method: "POST",
+    body,
+    transport,
+    timeoutMs: TEST_TIMEOUT_MS,
+  });
+
+  const { headers } = calls[0].options;
+  assert.equal(headers["Content-Type"], "application/json");
+  assert.equal(
+    headers["Content-Length"],
+    String(Buffer.byteLength(JSON.stringify(body))),
+  );
+});
+
+test("caller-supplied Content-Type / Content-Length are not overridden", async () => {
+  const { transport, calls } = fakeTransport(
+    respondWith({ status: HTTP_OK, body: "ok" }),
+  );
+
+  await httpRequest({
+    url: TEST_SERVER_URL,
+    method: "POST",
+    body: { a: 1 },
+    // Lower-cased on purpose: the override guard is case-insensitive, so these
+    // must win over the defaults httpClient would otherwise add.
+    headers: { "content-type": "text/plain", "content-length": "999" },
+    transport,
+    timeoutMs: TEST_TIMEOUT_MS,
+  });
+
+  const { headers } = calls[0].options;
+  assert.equal(headers["content-type"], "text/plain");
+  assert.equal(headers["content-length"], "999");
+  // No duplicate capitalized variants were added alongside the caller's.
+  assert.equal(headers["Content-Type"], undefined);
+  assert.equal(headers["Content-Length"], undefined);
+});
+
 test("token sets Authorization; caller-supplied Authorization is not overridden", async () => {
   const { transport, calls } = fakeTransport(
     respondWith({ status: HTTP_OK, body: "ok" }),

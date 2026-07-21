@@ -35,6 +35,13 @@ const TRANSIENT_FAIL_COUNT = 2;
 // Retry budget passed to atomicWrite in the give-up / no-retry tests.
 const TEST_RENAME_RETRIES = 3;
 
+// Must mirror MAX_RENAME_RETRIES in atomicWrite.mjs — the hard ceiling an
+// oversized renameRetries request is clamped down to.
+const MAX_RENAME_RETRIES = 50;
+
+// A renameRetries budget deliberately far above the cap, to prove it's clamped.
+const OVERSIZED_RENAME_RETRIES = 1000;
+
 // Builds an injectable rename that throws `code` for the first `failCount`
 // calls, then delegates to the real fs.rename (Infinity = always throw).
 function flakyRename(failCount, code) {
@@ -223,6 +230,26 @@ test("rename gives up after a persistent lock error, cleans temp", async () => {
         renameRetries: TEST_RENAME_RETRIES,
       }),
     );
+    assert.deepEqual(await listTmpFiles(dir), []);
+  });
+});
+
+test("renameRetries above the hard cap is clamped to MAX_RENAME_RETRIES", async () => {
+  await withScratchDir(async (dir) => {
+    const target = path.join(dir, "file.txt");
+    const { rename, getCalls } = flakyRename(Infinity, TRANSIENT_LOCK_CODE);
+
+    await assert.rejects(
+      atomicWrite(target, "x", {
+        rename,
+        sleep: noSleep,
+        renameRetries: OVERSIZED_RENAME_RETRIES,
+      }),
+    );
+
+    // Clamped budget => MAX_RENAME_RETRIES retries + 1 initial attempt, NOT the
+    // 1000 requested.
+    assert.equal(getCalls(), MAX_RENAME_RETRIES + 1);
     assert.deepEqual(await listTmpFiles(dir), []);
   });
 });

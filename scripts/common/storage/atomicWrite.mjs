@@ -13,6 +13,11 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // effectively never on POSIX. Retrying the rename clears them.
 const TRANSIENT_RENAME_CODES = new Set(["EPERM", "EACCES", "EBUSY", "EEXIST"]);
 
+// Hard ceiling on rename retries so a caller (or a future bug) can't request an
+// unbounded loop. Even a pathological Windows lock clears well within this, so
+// any request above it is clamped down rather than honored.
+const MAX_RENAME_RETRIES = 50;
+
 async function renameWithRetry(from, to, rename, retries, delayMs, sleep) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -47,6 +52,9 @@ export async function atomicWrite(
     sleep = defaultSleep,
   } = {},
 ) {
+  // Clamp to the hard ceiling — never trust a caller-supplied budget to be sane.
+  const retries = Math.min(renameRetries, MAX_RENAME_RETRIES);
+
   const dir = path.dirname(targetPath);
   const base = path.basename(targetPath);
   const tmpName = `.${base}.${process.pid}.${crypto
@@ -66,7 +74,7 @@ export async function atomicWrite(
       tmpPath,
       targetPath,
       rename,
-      renameRetries,
+      retries,
       renameRetryDelayMs,
       sleep,
     );

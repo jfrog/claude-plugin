@@ -22,29 +22,11 @@ function isRetryable(result) {
   return RETRYABLE_STATUSES.has(result.status);
 }
 
-function computeDelay(result, attempt, baseDelayMs, maxDelayMs) {
-  // Honor Retry-After on 429 responses when present (Node lowercases headers).
-  // Always cap at maxDelayMs so a hostile or misconfigured server can't force
-  // an unbounded sleep (e.g. `Retry-After: 3600`).
-  if (result.ok && result.status === 429) {
-    const retryAfter = result.headers?.["retry-after"];
-    if (retryAfter !== undefined && retryAfter !== null) {
-      const value = String(retryAfter).trim();
-      if (/^\d+$/.test(value)) {
-        // All-digits => delta-seconds.
-        return Math.min(Number(value) * 1000, maxDelayMs);
-      }
-      const parsed = Date.parse(value);
-      if (!Number.isNaN(parsed)) {
-        const delta = parsed - Date.now();
-        if (delta > 0) return Math.min(delta, maxDelayMs);
-      }
-    }
-  }
-
-  // Exponential backoff, exactly the curve the beta spec (§Service Contracts /
-  // D2) pins: 200ms → 400ms → 800ms (~1.4s total). Base 200ms, doubling, capped
-  // at maxDelayMs. No jitter — the spec fixes these values.
+function computeDelay(attempt, baseDelayMs, maxDelayMs) {
+  // Simple exponential backoff — every attempt doubles the wait, exactly the
+  // curve the beta spec (§Service Contracts / D2) pins: 200ms → 400ms → 800ms
+  // (~1.4s total). Base 200ms, doubling, capped at maxDelayMs. No jitter, and
+  // no Retry-After handling — the backend never sends that header.
   return Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
 }
 
@@ -98,7 +80,7 @@ export async function retryWithBackoff(
       return { ...result, success: false, attempts: attempt };
     }
 
-    const delayMs = computeDelay(result, attempt, baseDelayMs, maxDelayMs);
+    const delayMs = computeDelay(attempt, baseDelayMs, maxDelayMs);
     await sleep(delayMs);
   }
 

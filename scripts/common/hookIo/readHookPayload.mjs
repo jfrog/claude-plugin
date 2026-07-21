@@ -2,6 +2,12 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
+// Node-enforced stream event names, not strings we define — pinned as constants
+// so the on()/removeListener() pairs can never silently desync.
+const STREAM_EVENT_DATA = "data";
+const STREAM_EVENT_END = "end";
+const STREAM_EVENT_ERROR = "error";
+
 /**
  * Reads a JSON payload from a stream (process.stdin by default). Never
  * rejects.
@@ -29,9 +35,9 @@ export function readHookPayload({ stream = process.stdin, timeoutMs = 5000 } = {
 
     const cleanup = () => {
       clearTimeout(timer);
-      stream.removeListener("data", onData);
-      stream.removeListener("end", onEnd);
-      stream.removeListener("error", onError);
+      stream.removeListener(STREAM_EVENT_DATA, onData);
+      stream.removeListener(STREAM_EVENT_END, onEnd);
+      stream.removeListener(STREAM_EVENT_ERROR, onError);
     };
 
     const finish = (result) => {
@@ -74,8 +80,8 @@ export function readHookPayload({ stream = process.stdin, timeoutMs = 5000 } = {
       finish({ ok: false, reason: "timeout" });
     }, timeoutMs);
 
-    stream.on("data", onData);
-    stream.on("end", onEnd);
-    stream.on("error", onError);
+    stream.on(STREAM_EVENT_DATA, onData);
+    stream.on(STREAM_EVENT_END, onEnd);
+    stream.on(STREAM_EVENT_ERROR, onError);
   });
 }
