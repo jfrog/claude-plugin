@@ -119,7 +119,7 @@ test("500 is non-retryable (deterministic) → immediate failure, sleep never ca
   assert.equal(calls.length, 0);
 });
 
-test("401 is not retried here (token layer re-mints, not this helper)", async () => {
+test("401 is treated as non-retryable: 1 attempt, sleep never called", async () => {
   const { fn, state } = mockRequest([
     { ok: true, status: HTTP_UNAUTHORIZED, headers: {}, body: "" },
   ]);
@@ -189,20 +189,22 @@ test("invalid-body reason never retried: 1 attempt, immediate failure", async ()
   assert.equal(calls.length, 0);
 });
 
-test("exponential path: 503 no retry-after uses spec-default base (200ms)", async () => {
+test("exponential path: 503 with no retry-after uses the default base (200ms)", async () => {
   const { fn } = mockRequest([
     { ok: true, status: HTTP_SERVICE_UNAVAILABLE, headers: {}, body: "" },
     { ok: true, status: HTTP_OK, headers: {}, body: "" },
   ]);
   const { sleep, calls } = mockSleep();
 
+  // No baseDelayMs override → the default 200ms base applies.
   const result = await retryWithBackoff(fn, { successStatus: HTTP_OK, sleep });
   assert.equal(result.success, true);
   assert.equal(calls.length, 1);
+  // Default base is exactly 200ms, no jitter.
   assert.equal(calls[0], 200);
 });
 
-test("default backoff follows the spec curve: 4 attempts, sleeps ~200/400/800", async () => {
+test("default backoff: 4 attempts, sleeps 200/400/800", async () => {
   const { fn, state } = mockRequest([
     { ok: true, status: HTTP_SERVICE_UNAVAILABLE, headers: {}, body: "" },
   ]);
@@ -213,6 +215,7 @@ test("default backoff follows the spec curve: 4 attempts, sleeps ~200/400/800", 
   assert.equal(result.success, false);
   assert.equal(result.attempts, 4);
   assert.equal(state.calls, 4);
+  // 3 retries between 4 attempts: 200 → 400 → 800.
   assert.deepEqual(calls, [200, 400, 800]);
 });
 

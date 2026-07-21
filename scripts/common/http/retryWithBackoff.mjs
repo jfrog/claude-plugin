@@ -11,11 +11,10 @@ import {
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Server statuses the beta spec (§Service Contracts) marks retryable. NOTE:
-// 500 is explicitly NON-retryable — a deterministic server error a retry would
-// only reproduce; among the 5xx only 502/503/504 are transient. 401 is the
-// token layer's concern (a single re-mint, handled by the caller), so it is
-// absent here and never retried by this helper.
+// Server statuses treated as retryable. NOTE: 500 is explicitly NON-retryable
+// — a deterministic server error a retry would only reproduce; among the 5xx
+// only 502/503/504 are transient. 401 is the caller's concern (a single token
+// re-mint), so it is absent here and never retried by this helper.
 const RETRYABLE_STATUSES = new Set([
   HTTP_TOO_MANY_REQUESTS,
   HTTP_BAD_GATEWAY,
@@ -35,10 +34,8 @@ function isRetryable(result) {
 }
 
 function computeDelay(attempt, baseDelayMs, maxDelayMs) {
-  // Simple exponential backoff — every attempt doubles the wait, exactly the
-  // curve the beta spec (§Service Contracts / D2) pins: 200ms → 400ms → 800ms
-  // (~1.4s total). Base 200ms, doubling, capped at maxDelayMs. No jitter, and
-  // no Retry-After handling — the backend never sends that header.
+  // Simple exponential backoff — every attempt doubles the wait: 200ms → 400ms
+  // → 800ms (~1.4s total). Base 200ms, doubling, capped at maxDelayMs.
   return Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
 }
 
@@ -59,7 +56,7 @@ export async function retryWithBackoff(
   {
     successStatus,
     // 1 initial attempt + 3 retries = sleeps of 200 → 400 → 800ms (~1.4s
-    // total), the backoff the beta spec (§Service Contracts / D2) pins.
+    // total).
     maxAttempts = 4,
     baseDelayMs = 200,
     maxDelayMs = 3000,
