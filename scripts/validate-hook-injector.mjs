@@ -25,6 +25,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const injector = path.join(repoRoot, "scripts", "inject-instructions.mjs");
+const alignScript = path.join(repoRoot, "scripts", "align-plugin-mcps.mjs");
+const watchPathsScript = path.join(repoRoot, "scripts", "register-align-watch-paths.mjs");
 const templatesDir = path.join(repoRoot, "templates");
 const hooksFile = path.join(repoRoot, "hooks", "hooks.json");
 const pluginManifestFile = path.join(repoRoot, ".claude-plugin", "plugin.json");
@@ -99,6 +101,18 @@ function main() {
   check("injector parses (node --check)", () => {
     execFileSync(process.execPath, ["--check", injector], { stdio: "pipe" });
   });
+  check("align-plugin-mcps source exists", () => {
+    if (!existsSync(alignScript)) throw new Error(`missing: ${alignScript}`);
+  });
+  check("align-plugin-mcps parses (node --check)", () => {
+    execFileSync(process.execPath, ["--check", alignScript], { stdio: "pipe" });
+  });
+  check("register-align-watch-paths source exists", () => {
+    if (!existsSync(watchPathsScript)) throw new Error(`missing: ${watchPathsScript}`);
+  });
+  check("register-align-watch-paths parses (node --check)", () => {
+    execFileSync(process.execPath, ["--check", watchPathsScript], { stdio: "pipe" });
+  });
 
   // ---- Lint: manifest, hook wiring, and template read-path are consistent ----
   section("Lint (manifest & wiring)");
@@ -119,9 +133,31 @@ function main() {
     if (!Array.isArray(entries) || entries.length === 0) {
       throw new Error("hooks.json has no SessionStart hooks");
     }
-    const commands = entries.flatMap((e) => (e.hooks ?? []).map((h) => h.command ?? ""));
-    if (!commands.some((c) => c.includes("inject-instructions.mjs"))) {
+    const refs = entries.flatMap((e) =>
+      (e.hooks ?? []).flatMap((h) => [h.command ?? "", ...((h.args ?? []).map(String))]),
+    );
+    if (!refs.some((c) => String(c).includes("inject-instructions.mjs"))) {
       throw new Error("no SessionStart command references inject-instructions.mjs");
+    }
+    if (!refs.some((c) => String(c).includes("align-plugin-mcps.mjs"))) {
+      throw new Error("no SessionStart command references align-plugin-mcps.mjs");
+    }
+    if (!refs.some((c) => String(c).includes("register-align-watch-paths.mjs"))) {
+      throw new Error("no SessionStart command references register-align-watch-paths.mjs");
+    }
+  });
+
+  check("hooks.json wires FileChanged for plugin MCP align inputs", () => {
+    const hooks = JSON.parse(readFileSync(hooksFile, "utf8"));
+    const entries = hooks?.hooks?.FileChanged;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new Error("hooks.json has no FileChanged hooks");
+    }
+    const matchers = entries.map((e) => e.matcher ?? "");
+    for (const need of ["installed_plugins.json", "known_marketplaces.json"]) {
+      if (!matchers.some((m) => m.includes(need))) {
+        throw new Error(`no FileChanged matcher watches ${need}`);
+      }
     }
   });
 

@@ -7,6 +7,38 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/inject-instructions.mjs\"",
             "timeout": 7
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/register-align-watch-paths.mjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/align-plugin-mcps.mjs\"",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "installed_plugins.json",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/align-plugin-mcps.mjs\"",
+            "timeout": 45
+          }
+        ]
+      },
+      {
+        "matcher": "known_marketplaces.json",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/align-plugin-mcps.mjs\"",
+            "timeout": 45
           }
         ]
       }
