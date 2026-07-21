@@ -64,7 +64,6 @@ test("attempt cap: all fail (503) → 3 attempts, no 4th call", async () => {
   assert.equal(result.success, false);
   assert.equal(result.attempts, 3);
   assert.equal(state.calls, 3);
-  // Sleep only happens between attempts, so 2 sleeps for 3 attempts.
   assert.equal(calls.length, 2);
 });
 
@@ -162,8 +161,7 @@ test("429 is retryable and backs off exponentially (no Retry-After honored)", as
     {
       ok: true,
       status: HTTP_TOO_MANY_REQUESTS,
-      // Even with a Retry-After present, we ignore it — the backend never sends
-      // one, and the delay must follow the pinned exponential curve regardless.
+      // A Retry-After the helper must ignore in favor of the exponential curve.
       headers: { "retry-after": "3600" },
       body: "",
     },
@@ -175,7 +173,6 @@ test("429 is retryable and backs off exponentially (no Retry-After honored)", as
   assert.equal(result.success, true);
   assert.equal(state.calls, 2);
   assert.equal(calls.length, 1);
-  // First retry uses the spec-default base, not the 3600s Retry-After value.
   assert.equal(calls[0], 200);
 });
 
@@ -199,11 +196,9 @@ test("exponential path: 503 no retry-after uses spec-default base (200ms)", asyn
   ]);
   const { sleep, calls } = mockSleep();
 
-  // No baseDelayMs override → the beta spec's pinned 200ms base applies.
   const result = await retryWithBackoff(fn, { successStatus: HTTP_OK, sleep });
   assert.equal(result.success, true);
   assert.equal(calls.length, 1);
-  // Default base is exactly 200ms (beta spec 200 → 400 → 800, no jitter).
   assert.equal(calls[0], 200);
 });
 
@@ -218,7 +213,6 @@ test("default backoff follows the spec curve: 4 attempts, sleeps ~200/400/800", 
   assert.equal(result.success, false);
   assert.equal(result.attempts, 4);
   assert.equal(state.calls, 4);
-  // 3 retries between 4 attempts, exactly the spec's 200 → 400 → 800 curve.
   assert.deepEqual(calls, [200, 400, 800]);
 });
 
@@ -268,25 +262,31 @@ test("throwing requestFn treated as retryable network failure, then succeeds", a
 });
 
 test("two concurrent calls don't cross-contaminate attempt counts", async () => {
-  const a = mockRequest([
+  const succeedsAfterOneRetry = mockRequest([
     { ok: true, status: HTTP_SERVICE_UNAVAILABLE, headers: {}, body: "" },
     { ok: true, status: HTTP_OK, headers: {}, body: "" },
   ]);
-  const b = mockRequest([
+  const succeedsAfterTwoRetries = mockRequest([
     { ok: true, status: HTTP_SERVICE_UNAVAILABLE, headers: {}, body: "" },
     { ok: true, status: HTTP_SERVICE_UNAVAILABLE, headers: {}, body: "" },
     { ok: true, status: HTTP_OK, headers: {}, body: "" },
   ]);
-  const { sleep: sleepA } = mockSleep();
-  const { sleep: sleepB } = mockSleep();
+  const { sleep: sleepOneRetry } = mockSleep();
+  const { sleep: sleepTwoRetries } = mockSleep();
 
-  const [ra, rb] = await Promise.all([
-    retryWithBackoff(a.fn, { successStatus: HTTP_OK, sleep: sleepA }),
-    retryWithBackoff(b.fn, { successStatus: HTTP_OK, sleep: sleepB }),
+  const [oneRetryResult, twoRetriesResult] = await Promise.all([
+    retryWithBackoff(succeedsAfterOneRetry.fn, {
+      successStatus: HTTP_OK,
+      sleep: sleepOneRetry,
+    }),
+    retryWithBackoff(succeedsAfterTwoRetries.fn, {
+      successStatus: HTTP_OK,
+      sleep: sleepTwoRetries,
+    }),
   ]);
 
-  assert.equal(ra.success, true);
-  assert.equal(ra.attempts, 2);
-  assert.equal(rb.success, true);
-  assert.equal(rb.attempts, 3);
+  assert.equal(oneRetryResult.success, true);
+  assert.equal(oneRetryResult.attempts, 2);
+  assert.equal(twoRetriesResult.success, true);
+  assert.equal(twoRetriesResult.attempts, 3);
 });

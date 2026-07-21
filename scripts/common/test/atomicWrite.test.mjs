@@ -35,11 +35,8 @@ const TRANSIENT_FAIL_COUNT = 2;
 // Retry budget passed to atomicWrite in the give-up / no-retry tests.
 const TEST_RENAME_RETRIES = 3;
 
-// Must mirror MAX_RENAME_RETRIES in atomicWrite.mjs — the hard ceiling an
-// oversized renameRetries request is clamped down to.
+// Must mirror MAX_RENAME_RETRIES in atomicWrite.mjs.
 const MAX_RENAME_RETRIES = 50;
-
-// A renameRetries budget deliberately far above the cap, to prove it's clamped.
 const OVERSIZED_RENAME_RETRIES = 1000;
 
 // Builds an injectable rename that throws `code` for the first `failCount`
@@ -247,8 +244,7 @@ test("renameRetries above the hard cap is clamped to MAX_RENAME_RETRIES", async 
       }),
     );
 
-    // Clamped budget => MAX_RENAME_RETRIES retries + 1 initial attempt, NOT the
-    // 1000 requested.
+    // Clamped budget: MAX_RENAME_RETRIES retries + 1 initial attempt.
     assert.equal(getCalls(), MAX_RENAME_RETRIES + 1);
     assert.deepEqual(await listTmpFiles(dir), []);
   });

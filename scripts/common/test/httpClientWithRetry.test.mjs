@@ -10,17 +10,14 @@ import { httpRequest } from "../http/httpClient.mjs";
 import { retryWithBackoff } from "../http/retryWithBackoff.mjs";
 import { HTTP_OK, HTTP_SERVICE_UNAVAILABLE } from "../http/httpStatuses.mjs";
 
-// The isolated unit tests prove each primitive in a vacuum; this file exercises
-// the httpClient-with-retry-backoff pairing that actually ships — real
-// httpRequest driven by real retryWithBackoff — so the `{ ok, status }` result
-// shape one produces is exactly what the other consumes.
+// Exercises the real httpRequest + retryWithBackoff pairing that ships, not each
+// primitive in isolation.
 
 const TEST_SERVER_URL = "https://127.0.0.1:1/anything";
 const TEST_TIMEOUT_MS = 1000;
 
-// Fake transport (parsedUrl, options, callback) => req, matching https.request.
-// Plays back the queued responses in order, one per request, so successive
-// retries can see different statuses.
+// Fake https.request that plays back one queued response per call, so retries
+// can see different statuses.
 function scriptedTransport(responses) {
   let call = 0;
   const transport = (parsedUrl, options, callback) => {
@@ -48,7 +45,7 @@ function scriptedTransport(responses) {
 
 const noSleep = async () => {};
 
-test("composition: retryWithBackoff retries a real httpRequest 503 then succeeds", async () => {
+test("retries a real httpRequest 503 then succeeds", async () => {
   const { transport, getCalls } = scriptedTransport([
     { status: HTTP_SERVICE_UNAVAILABLE },
     { status: HTTP_OK, body: "ok" },
@@ -71,10 +68,8 @@ test("composition: retryWithBackoff retries a real httpRequest 503 then succeeds
   assert.equal(getCalls(), 2);
 });
 
-test("composition: a real httpRequest network error is retried then exhausted", async () => {
-  // A transport that always errors — httpRequest surfaces { ok:false,
-  // reason:"network" }, which retryWithBackoff treats as retryable.
-  const transport = () => {
+test("network error surfaces as reason:network and is retried then exhausted", async () => {
+  const alwaysErroringTransport = () => {
     const req = new EventEmitter();
     req.write = () => {};
     req.end = () =>
@@ -87,7 +82,7 @@ test("composition: a real httpRequest network error is retried then exhausted", 
     () =>
       httpRequest({
         url: TEST_SERVER_URL,
-        transport,
+        transport: alwaysErroringTransport,
         timeoutMs: TEST_TIMEOUT_MS,
       }),
     { successStatus: HTTP_OK, maxAttempts: 3, sleep: noSleep },

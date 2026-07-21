@@ -190,9 +190,8 @@ test("caller-supplied Content-Type / Content-Length are not overridden", async (
   await httpRequest({
     url: TEST_SERVER_URL,
     method: "POST",
-    body: { a: 1 },
-    // Lower-cased on purpose: the override guard is case-insensitive, so these
-    // must win over the defaults httpClient would otherwise add.
+    body: { field: 1 },
+    // Lower-cased to prove the override guard is case-insensitive.
     headers: { "content-type": "text/plain", "content-length": "999" },
     transport,
     timeoutMs: TEST_TIMEOUT_MS,
@@ -201,7 +200,6 @@ test("caller-supplied Content-Type / Content-Length are not overridden", async (
   const { headers } = calls[0].options;
   assert.equal(headers["content-type"], "text/plain");
   assert.equal(headers["content-length"], "999");
-  // No duplicate capitalized variants were added alongside the caller's.
   assert.equal(headers["Content-Type"], undefined);
   assert.equal(headers["Content-Length"], undefined);
 });
