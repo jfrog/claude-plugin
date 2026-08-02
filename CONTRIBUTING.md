@@ -54,6 +54,17 @@ Use [Submitting your plugin](https://claude.com/docs/plugins/submit). Submit the
 
 Compliance: [Anthropic Software Directory Terms](https://support.claude.com/en/articles/13145338-anthropic-software-directory-terms), [Anthropic Software Directory Policy](https://support.claude.com/en/articles/13145358-anthropic-software-directory-policy).
 
+## Releasing
+
+To cut a release:
+
+1. In your PR, bump `.version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json). That manifest is the only place the version lives.
+2. Merge to `main` with `[major]`, `[minor]`, or `[patch]` anywhere in the commit message.
+
+The release workflow reads the version from the manifest, creates a `vX.Y.Z` git tag, and publishes a GitHub Release with a repo zip attached. The marker only decides *whether* to release; the version comes from the manifest either way, so the bump is reviewed in the PR that makes it. There is no bot push to `main`.
+
+Merging a marker without bumping the manifest fails the release rather than re-tagging a shipped version.
+
 ## Reporting Issues
 
 Open a [GitHub issue](https://github.com/jfrog/claude-plugin/issues) with:

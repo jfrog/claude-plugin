@@ -16,68 +16,64 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # Check out the repository with full history for tag inspection
+      # Full history so the "already released" check below can see existing tags.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Inspect the commit message for a [major], [minor], or [patch] release tag
-      - name: Detect release tag in commit message
+      # Releasing is opt-in: only a merge whose commit message carries [major], [minor] or
+      # [patch] cuts one. The marker is purely a trigger — the version itself always comes from
+      # the manifest, so the bump is reviewable in the PR that makes it.
+      # The message is passed through env rather than interpolated into the script, so a commit
+      # subject can never inject shell.
+      - name: Detect release marker in commit message
         id: detect
+        env:
+          MSG: ${{ github.event.head_commit.message }}
         run: |
-          MSG="${{ github.event.head_commit.message }}"
-          if echo "$MSG" | grep -qE '\[(major|minor|patch)\]'; then
-            TAG=$(echo "$MSG" | grep -oE '\[(major|minor|patch)\]' | head -1 | tr -d '[]')
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if printf '%s' "$MSG" | grep -qE '\[(major|minor|patch)\]'; then
             echo "triggered=true" >> "$GITHUB_OUTPUT"
           else
             echo "triggered=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Calculate the next semantic version based on the detected release tag
-      - name: Compute next version
+      # .claude-plugin/plugin.json is the single source of truth for the version — it is the file
+      # Claude Code itself reads. Nothing duplicates it, so there is no drift to police.
+      - name: Read version from the plugin manifest
         if: steps.detect.outputs.triggered == 'true'
         id: version
         run: |
-          VERSION=$(cat VERSION)
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f2)
-          PATCH=$(echo "$VERSION" | cut -d. -f3)
-          case "${{ steps.detect.outputs.tag }}" in
-            major) NEXT="$((MAJOR + 1)).0.0" ;;
-            minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
-            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-          esac
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          VERSION=$(jq -er '.version' .claude-plugin/plugin.json)
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::.claude-plugin/plugin.json version '$VERSION' is not X.Y.Z — refusing to release"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # Write the new version into VERSION and .claude-plugin/plugin.json
-      - name: Update VERSION and JSON files
+      # Catches the one mistake this flow allows: merging a release marker without bumping the
+      # manifest, which would otherwise try to re-tag a version that already shipped.
+      - name: Refuse to re-release an existing version
         if: steps.detect.outputs.triggered == 'true'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          echo "$VERSION" > VERSION
-          jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json
-          mv /tmp/plugin.json .claude-plugin/plugin.json
+          TAG="v${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG already exists — bump .claude-plugin/plugin.json before merging a release marker"
+            exit 1
+          fi
 
-      # Commit the version bump, create a git tag, and push both to origin
-      - name: Commit, tag, and push
+      - name: Create and push tag
         if: steps.detect.outputs.triggered == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION .claude-plugin/plugin.json
-          git commit -m "Release v${{ steps.version.outputs.version }}"
-          git push origin main
-          git tag "v${{ steps.version.outputs.version }}"
-          git push origin "v${{ steps.version.outputs.version }}"
+          TAG="v${{ steps.version.outputs.version }}"
+          git tag "$TAG"
+          git push origin "$TAG"
 
-      # Zip the repository contents into a release artifact
       - name: Package release artifact
         if: steps.detect.outputs.triggered == 'true'
         run: zip -r release.zip . --exclude ".git/*" --exclude ".github/*"
 
-      # Publish a GitHub Release with the packaged artifact and auto-generated notes
       - name: Create GitHub Release
         if: steps.detect.outputs.triggered == 'true'
         env:
