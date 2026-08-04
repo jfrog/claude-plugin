@@ -59,14 +59,19 @@ Compliance: [Anthropic Software Directory Terms](https://support.claude.com/en/a
 To cut a release:
 
 1. In your PR, bump `.version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json). That manifest is the only place the version lives.
-2. Merge to `main` with `[major]`, `[minor]`, or `[patch]` in the commit **subject** — the first
+2. Merge to `main` with `[major]`, `[minor]`, or `[patch]` in the commit **subject** - the first
    line. A marker further down in the body is ignored on purpose: this repo squash-merges, and
    GitHub pre-fills the squash body from the branch commits or the PR description, either of
    which may quote a marker while only documenting it.
 
-The release workflow reads the version from the manifest, creates a `vX.Y.Z` git tag, and publishes a GitHub Release with a repo zip attached. The marker only decides *whether* to release; the version comes from the manifest either way, so the bump is reviewed in the PR that makes it. There is no bot push to `main`.
+The marker only decides *whether* to release; the version comes from the manifest either way, so the bump is reviewed in the PR that makes it. There is no bot push to `main`. Merging a marker without bumping the manifest fails the release rather than re-tagging a shipped version.
 
-Merging a marker without bumping the manifest fails the release rather than re-tagging a shipped version.
+The workflow reads the version from the manifest, refuses to continue if that version is already tagged, runs the same plugin-layout check as the `validate` PR workflow, packages the tracked files at `HEAD` (minus `.github/`) into `release.zip`, and creates the `vX.Y.Z` tag as part of publishing the GitHub Release.
+
+Two things to know before changing it:
+
+- Validation runs inside the release job. `validate.yml` triggers on the same push, but as an independent workflow, so it can be red while a release still goes out. Re-running its check in the release job is what actually gates the release on it.
+- The tag is created by the release, not before it. `gh release create --target` does both in one API call, so a failed run can't leave a tag behind with no release attached to it.
 
 ## Reporting Issues
 
