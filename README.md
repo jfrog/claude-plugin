@@ -88,7 +88,7 @@ Agent Package Resolution is in preview and opt-in. To get started:
 Agent Package Resolution runs from a `SessionStart` hook, so there are two things worth knowing before you go looking for it:
 
 - **Restart Claude Code after installing the plugin.** Hooks are registered when Claude Code starts, so a session that was already open when you installed will not run it.
-- **The hook is not written into your own configuration.** It stays inside the plugin and is merged at runtime, so it does not appear in `~/.claude/settings.json` or `~/.claude/hooks/` — finding nothing there does not mean the install failed.
+- **The hook is not written into your own configuration.** It stays inside the plugin (`hooks/hooks.json`) and is merged at runtime, so it does not appear in `~/.claude/settings.json` or `~/.claude/hooks/` — finding nothing there does not mean the install failed.
 
 To confirm it is running, start a new session and check the hook log:
 
