@@ -21,18 +21,7 @@ MP_PATH="/ml/core/api/v1/ai-registry/agent-plugins/custom/marketplace/claude-mar
 MP_PREFIXES=("" "/bridge-client")   # SaaS first, then self-hosted (Bridge Client)
 WHOAMI_PATH="/access/api/v1/tokens/me"
 
-urlenc() {
-  local s="$1" out="" i c hex
-  for (( i=0; i<${#s}; i++ )); do
-    c="${s:i:1}"
-    if [[ "$c" =~ [a-zA-Z0-9.~_-] ]]; then
-      out+="$c"
-    else
-      printf -v hex '%%%02X' "'$c"; out+="$hex"
-    fi
-  done
-  printf '%s' "$out"
-}
+urlenc() { jq -rn --arg x "$1" '$x|@uri'; }
 
 # Drop the `machine <host>` block from ~/.netrc.
 netrc_drop_host() {
