@@ -78,8 +78,7 @@ TOKEN=$(jq -r '.accessToken // empty' <<<"$cfg")
   exit 1
 }
 
-# Resolve the real username from the token's subject (works for JWT and
-# reference tokens; format is "<issuer>/users/<username>").
+# Resolve username from the token's subject: "<issuer>/users/<username>".
 subject=$(jf api --server-id "$SID" "$WHOAMI_PATH" 2>/dev/null | jq -r '.subject // empty')
 LOGIN="${subject##*/users/}"
 [[ -n "$LOGIN" && "$LOGIN" != "$subject" ]] || {
