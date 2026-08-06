@@ -7,11 +7,16 @@
 //
 // Spawns `npx @jfrog/agent-guard --align-plugin-mcps --format hook-…` and
 // passthroughs stdout unchanged (watchPaths / systemMessage / additionalContext
-// are owned by agent-guard). Never exits non-zero — a failed align must not
-// break the Claude session.
+// are owned by agent-guard). Claude hook stdin is forwarded to agent-guard so
+// FileChanged payloads (changed paths, etc.) are available. Never exits
+// non-zero — a failed align must not break the Claude session.
 //
 // On SessionStart failure (or empty agent-guard stdout), still emits a fallback
 // watchPaths payload so FileChanged keeps watching plugin install metadata.
+//
+// The npx child is killed if it exceeds DEFAULT_ALIGN_TIMEOUT_MS (under the
+// SessionStart/FileChanged hook timeout in hooks/hooks.json) so hung downloads
+// do not leave orphan processes after Claude cancels the hook.
 //
 // Kill switch: JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1 → no-op (exit 0, no stdout).
 
@@ -31,6 +36,8 @@ export const AGENT_GUARD_PACKAGE = "@jfrog/agent-guard";
 export const DISABLE_ENV = "JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE";
 export const DEFAULT_AGENT_GUARD_NPM_REGISTRY =
   "https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/";
+/** Under hooks.json align timeouts (45s) so we can SIGTERM before Claude kills us. */
+export const DEFAULT_ALIGN_TIMEOUT_MS = 40_000;
 
 /** @type {Readonly<Record<string, string>>} */
 export const MODES = Object.freeze({
@@ -116,28 +123,38 @@ export function buildNpxArgs(format, env = process.env) {
 
 /**
  * @param {string} format
- * @param {{ spawnFn?: typeof spawn, env?: NodeJS.ProcessEnv }} [opts]
+ * @param {{
+ *   spawnFn?: typeof spawn,
+ *   env?: NodeJS.ProcessEnv,
+ *   stdin?: string,
+ *   timeoutMs?: number,
+ * }} [opts]
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
 export function runAgentGuardAlign(format, opts = {}) {
   const spawnFn = opts.spawnFn ?? spawn;
   const env = opts.env ?? process.env;
+  const stdin = opts.stdin ?? "";
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_ALIGN_TIMEOUT_MS;
   const args = buildNpxArgs(format, env);
 
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      if (timer !== undefined) clearTimeout(timer);
       resolve(result);
     };
 
     let child;
     try {
       child = spawnFn("npx", args, {
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         env,
       });
     } catch (err) {
@@ -165,6 +182,27 @@ export function runAgentGuardAlign(format, opts = {}) {
     child.on("close", (code) => {
       finish({ code: code ?? 1, stdout, stderr });
     });
+
+    try {
+      child.stdin?.end(stdin);
+    } catch {
+      // Child may already have exited; close/error handlers settle the promise.
+    }
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          // ignore
+        }
+        finish({
+          code: 1,
+          stdout,
+          stderr: `${stderr ? `${stderr.trim()}\n` : ""}align timed out after ${timeoutMs}ms`,
+        });
+      }, timeoutMs);
+    }
   });
 }
 
@@ -175,6 +213,7 @@ export function runAgentGuardAlign(format, opts = {}) {
  *   spawnFn?: typeof spawn,
  *   writeStdout?: (s: string) => void,
  *   readStdinFn?: () => Promise<string>,
+ *   timeoutMs?: number,
  * }} [deps]
  * @returns {Promise<number>} always 0
  */
@@ -185,7 +224,8 @@ export async function runAlignHook(modeArg, deps = {}) {
   const format = MODES[modeArg];
   const isSessionStart = format === "hook-session-start";
 
-  // Drain Claude hook stdin so the parent does not hang on a live pipe.
+  // Drain Claude hook stdin so the parent does not hang on a live pipe, then
+  // forward it to agent-guard (FileChanged includes the changed path).
   const stdinRaw = await readStdinFn();
   setLogContext({ ide: HARNESS_ID, sessionId: parseSessionId(stdinRaw) });
 
@@ -203,6 +243,8 @@ export async function runAlignHook(modeArg, deps = {}) {
   const result = await runAgentGuardAlign(format, {
     spawnFn: deps.spawnFn,
     env,
+    stdin: stdinRaw,
+    timeoutMs: deps.timeoutMs,
   });
   const durMs = Date.now() - startedAtMs;
 
