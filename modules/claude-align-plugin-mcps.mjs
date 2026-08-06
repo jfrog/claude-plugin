@@ -15,8 +15,9 @@
 // watchPaths payload so FileChanged keeps watching plugin install metadata.
 //
 // The npx child is killed if it exceeds DEFAULT_ALIGN_TIMEOUT_MS (under the
-// SessionStart/FileChanged hook timeout in hooks/hooks.json) so hung downloads
-// do not leave orphan processes after Claude cancels the hook.
+// SessionStart/FileChanged hook timeout in hooks/hooks.json). On POSIX the child
+// runs in its own process group so SIGTERM reaches npx and its download
+// grandchildren; on Windows we shell-spawn npx.cmd and kill that process.
 //
 // Kill switch: JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1 → no-op (exit 0, no stdout).
 
@@ -47,6 +48,58 @@ export const MODES = Object.freeze({
 
 export function isAlignDisabled(env = process.env) {
   return env[DISABLE_ENV] === "1";
+}
+
+/**
+ * npx is a .cmd shim on Windows and cannot be spawned without a shell / .cmd name.
+ * @param {NodeJS.Platform} [platform]
+ */
+export function resolveNpxCommand(platform = process.platform) {
+  return platform === "win32" ? "npx.cmd" : "npx";
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @param {NodeJS.Platform} [platform]
+ */
+export function buildNpxSpawnOptions(env, platform = process.platform) {
+  const isWin = platform === "win32";
+  return {
+    stdio: /** @type {const} */ (["pipe", "pipe", "pipe"]),
+    env,
+    // Resolve npx.cmd via cmd.exe; bare spawn("npx") often ENOENTs on Windows.
+    shell: isWin,
+    // Own process group on POSIX so timeout can SIGTERM the whole npx tree.
+    detached: !isWin,
+  };
+}
+
+/**
+ * Kill npx and (on POSIX) its process-group children after an align timeout.
+ * @param {{ pid?: number, kill?: (signal?: string) => boolean }} child
+ * @param {{
+ *   platform?: NodeJS.Platform,
+ *   killFn?: (pid: number, signal?: string) => true,
+ * }} [opts]
+ */
+export function killAlignChildTree(child, opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  const killFn = opts.killFn ?? process.kill;
+
+  if (platform !== "win32" && child?.pid) {
+    try {
+      killFn(-child.pid, "SIGTERM");
+      return;
+    } catch {
+      // Fall through to child.kill when the group is already gone.
+    }
+  }
+
+  try {
+    child?.kill?.("SIGTERM");
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -128,6 +181,8 @@ export function buildNpxArgs(format, env = process.env) {
  *   env?: NodeJS.ProcessEnv,
  *   stdin?: string,
  *   timeoutMs?: number,
+ *   platform?: NodeJS.Platform,
+ *   killFn?: (pid: number, signal?: string) => true,
  * }} [opts]
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
@@ -136,7 +191,10 @@ export function runAgentGuardAlign(format, opts = {}) {
   const env = opts.env ?? process.env;
   const stdin = opts.stdin ?? "";
   const timeoutMs = opts.timeoutMs ?? DEFAULT_ALIGN_TIMEOUT_MS;
+  const platform = opts.platform ?? process.platform;
   const args = buildNpxArgs(format, env);
+  const command = resolveNpxCommand(platform);
+  const spawnOpts = buildNpxSpawnOptions(env, platform);
 
   return new Promise((resolve) => {
     let stdout = "";
@@ -153,10 +211,7 @@ export function runAgentGuardAlign(format, opts = {}) {
 
     let child;
     try {
-      child = spawnFn("npx", args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        env,
-      });
+      child = spawnFn(command, args, spawnOpts);
     } catch (err) {
       finish({
         code: 1,
@@ -191,11 +246,10 @@ export function runAgentGuardAlign(format, opts = {}) {
 
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
-        try {
-          child.kill("SIGTERM");
-        } catch {
-          // ignore
-        }
+        killAlignChildTree(child, {
+          platform,
+          killFn: opts.killFn,
+        });
         finish({
           code: 1,
           stdout,
@@ -214,6 +268,8 @@ export function runAgentGuardAlign(format, opts = {}) {
  *   writeStdout?: (s: string) => void,
  *   readStdinFn?: () => Promise<string>,
  *   timeoutMs?: number,
+ *   platform?: NodeJS.Platform,
+ *   killFn?: (pid: number, signal?: string) => true,
  * }} [deps]
  * @returns {Promise<number>} always 0
  */
@@ -245,6 +301,8 @@ export async function runAlignHook(modeArg, deps = {}) {
     env,
     stdin: stdinRaw,
     timeoutMs: deps.timeoutMs,
+    platform: deps.platform,
+    killFn: deps.killFn,
   });
   const durMs = Date.now() - startedAtMs;
 
