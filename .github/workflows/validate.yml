@@ -22,3 +22,6 @@ jobs:
 
       - name: Validate plugin layout
         run: node scripts/validate-claude-plugin.mjs
+
+      - name: Validate the skill-enforcement hook
+        run: node scripts/validate-enforce-hook.mjs

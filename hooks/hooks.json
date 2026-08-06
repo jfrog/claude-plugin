@@ -11,6 +11,31 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/enforce-skill.mjs"],
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/enforce-skill.mjs"],
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }
