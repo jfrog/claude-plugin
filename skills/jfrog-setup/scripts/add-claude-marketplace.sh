@@ -37,33 +37,28 @@ for cmd in jf claude jq base64; do
   command -v "$cmd" >/dev/null || { echo "ERROR: $cmd not on PATH" >&2; exit 3; }
 done
 
-default_info=$(jf config show 2>/dev/null | awk '
-  /^Server ID:/           { sid=$NF }
-  /^JFrog Platform URL:/  { url=$NF }
-  /^Default:[[:space:]]*true/ { print sid, url; exit }
-')
-[[ -n "$default_info" ]] || {
+# Decode in-process so the token never touches disk or stdout.
+cfg=$(jf config export 2>/dev/null | base64 -d 2>/dev/null || true)
+[[ -n "$cfg" ]] || {
   echo "ERROR: no default jf server. Run 'jf login' or 'jf config use <sid>'." >&2
   exit 1
 }
-SID="${default_info%% *}"
-JFROG_URL="${default_info#* }"
+SID=$(jq -r '.serverId    // empty' <<<"$cfg")
+JFROG_URL=$(jq -r '.url         // empty' <<<"$cfg")
+TOKEN=$(jq -r '.accessToken // empty' <<<"$cfg")
+
 JFROG_URL="${JFROG_URL%/}"
 SCHEME="${JFROG_URL%%://*}"
 BASE="${JFROG_URL#*://}"          # keeps any /path prefix
 HOST="${BASE%%/*}"                # for netrc
-[[ -n "$SID" && -n "$SCHEME" && -n "$HOST" ]] || {
-  echo "ERROR: could not parse default jf server." >&2
-  exit 1
-}
 
-# Decode in-process so the token never touches disk or stdout.
-cfg=$(jf config export "$SID" 2>/dev/null | base64 -d 2>/dev/null || true)
-[[ -n "$cfg" ]] || { echo "ERROR: could not read jf config for '$SID'." >&2; exit 1; }
-TOKEN=$(jq -r '.accessToken // empty' <<<"$cfg")
 [[ -n "$TOKEN" ]] || {
   echo "ERROR: no access token stored in jf config for '$SID'. Run 'jf login'"    >&2
   echo "       or 'jf config add --access-token <T>' to configure one, then retry." >&2
+  exit 1
+}
+[[ -n "$SID" && -n "$SCHEME" && -n "$HOST" ]] || {
+  echo "ERROR: could not parse default jf server URL." >&2
   exit 1
 }
 
