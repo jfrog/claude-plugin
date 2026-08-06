@@ -7,9 +7,8 @@
 #
 # Exit codes:
 #   0  success
-#   1  no default jf server, no access token, or no marketplace endpoint
+#   1  no default jf server, no access token, or marketplace add failed
 #   3  required CLI missing
-#   *  passthrough from `claude plugin marketplace add`
 
 set -euo pipefail
 
@@ -25,7 +24,7 @@ urlenc() { jq -rn --arg x "$1" '$x|@uri'; }
 
 # Drop the `machine <host>` block from ~/.netrc.
 netrc_drop_host() {
-  [[ -e "$NETRC" ]] || return 0
+  [[ -f "$NETRC" ]] || return 0
   awk -v h="$1" '
     $1 == "machine" && $2 == h        { skip=1; next }
     $1 == "machine" || $1 == "default" { skip=0 }
@@ -37,7 +36,7 @@ for cmd in jf claude jq base64; do
   command -v "$cmd" >/dev/null || { echo "ERROR: $cmd not on PATH" >&2; exit 3; }
 done
 
-# Decode in-process so the token never touches disk or stdout.
+# Read the default server's config in-process. Token never touches disk or stdout.
 cfg=$(jf config export 2>/dev/null | base64 -d 2>/dev/null || true)
 [[ -n "$cfg" ]] || {
   echo "ERROR: no default jf server. Run 'jf login' or 'jf config use <sid>'." >&2
