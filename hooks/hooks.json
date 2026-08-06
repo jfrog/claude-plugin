@@ -17,6 +17,15 @@
             "type": "command",
             "command": "node",
             "args": [
+              "${CLAUDE_PLUGIN_ROOT}/modules/claude-register-align-watch-paths.mjs"
+            ],
+            "timeout": 5,
+            "statusMessage": "Watching plugin MCP install metadata…"
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
               "${CLAUDE_PLUGIN_ROOT}/modules/claude-align-plugin-mcps.mjs",
               "session-start"
             ],

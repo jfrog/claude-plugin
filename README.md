@@ -120,7 +120,7 @@ When Agent Package Resolution is enabled and configured, no special prompt synta
 
 ### MCP server management (Agent Guard)
 
-On every Claude Code SessionStart, and when `installed_plugins.json` / `known_marketplaces.json` change, the plugin runs `npx @jfrog/agent-guard --align-plugin-mcps` so installed-plugin stdio MCPs launch through Agent Guard (required when enterprise policy only allows that command). If configs were rewritten, Claude asks you to `/reload-plugins`. Disable with `JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1`. Optional: set `JFROG_AGENT_GUARD_REPO` to your private npm registry for `@jfrog/agent-guard`.
+On every Claude Code SessionStart, the plugin registers FileChanged watch paths for `installed_plugins.json` / `known_marketplaces.json`, then runs `npx @jfrog/agent-guard --align-plugin-mcps` so installed-plugin stdio MCPs launch through Agent Guard (required when enterprise policy only allows that command). The same align runs again when those files change. If configs were rewritten, Claude asks you to `/reload-plugins`. Disable with `JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1`. Optional: set `JFROG_AGENT_GUARD_REPO` to your private npm registry for `@jfrog/agent-guard`.
 
 | Ask the agent… | What happens |
 | --- | --- |

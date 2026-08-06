@@ -22,3 +22,6 @@ jobs:
 
       - name: Validate plugin layout
         run: node scripts/validate-claude-plugin.mjs
+
+      - name: Run Agent Guard align-hook unit tests
+        run: node --test modules/claude-align-plugin-mcps.test.mjs

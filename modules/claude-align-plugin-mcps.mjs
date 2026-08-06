@@ -10,9 +10,13 @@
 // are owned by agent-guard). Never exits non-zero — a failed align must not
 // break the Claude session.
 //
+// On SessionStart failure (or empty agent-guard stdout), still emits a fallback
+// watchPaths payload so FileChanged keeps watching plugin install metadata.
+//
 // Kill switch: JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1 → no-op (exit 0, no stdout).
 
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -39,6 +43,33 @@ export function isAlignDisabled(env = process.env) {
 }
 
 /**
+ * Claude plugins metadata directory (`installed_plugins.json`, etc.).
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function resolvePluginsDir(env = process.env) {
+  const configDir = env.CLAUDE_CONFIG_DIR?.trim() || path.join(homedir(), ".claude");
+  return path.join(configDir, "plugins");
+}
+
+/**
+ * Minimal SessionStart JSON so FileChanged can watch plugin install metadata
+ * even when agent-guard is unavailable or returns empty stdout.
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function buildSessionStartWatchPayload(env = process.env) {
+  const dir = resolvePluginsDir(env);
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      watchPaths: [
+        path.join(dir, "installed_plugins.json"),
+        path.join(dir, "known_marketplaces.json"),
+      ],
+    },
+  });
+}
+
+/**
  * Resolve the npm registry used to download @jfrog/agent-guard for this hook.
  * Matches the skill / agent-guard default when JFROG_AGENT_GUARD_REPO is unset.
  * @param {NodeJS.ProcessEnv} [env]
@@ -54,7 +85,7 @@ export function resolveAgentGuardNpmRegistry(env = process.env) {
  * @returns {string[]}
  */
 export function buildNpxArgs(format, env = process.env) {
-  return [
+  const args = [
     "--yes",
     "--registry",
     resolveAgentGuardNpmRegistry(env),
@@ -63,6 +94,24 @@ export function buildNpxArgs(format, env = process.env) {
     "--format",
     format,
   ];
+
+  const project = env.JF_PROJECT?.trim();
+  if (project) {
+    args.push("--project", project);
+  }
+
+  const claudeConfigDir = env.CLAUDE_CONFIG_DIR?.trim();
+  if (claudeConfigDir) {
+    args.push("--claude-config-dir", claudeConfigDir);
+  }
+
+  // When a private registry is set, also pass it to agent-guard (not only npx).
+  const agentGuardRegistry = env.JFROG_AGENT_GUARD_REPO?.trim();
+  if (agentGuardRegistry) {
+    args.push("--registry", agentGuardRegistry);
+  }
+
+  return args;
 }
 
 /**
@@ -78,6 +127,13 @@ export function runAgentGuardAlign(format, opts = {}) {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
     let child;
     try {
       child = spawnFn("npx", args, {
@@ -85,7 +141,7 @@ export function runAgentGuardAlign(format, opts = {}) {
         env,
       });
     } catch (err) {
-      resolve({
+      finish({
         code: 1,
         stdout: "",
         stderr: err?.message ?? String(err),
@@ -100,14 +156,14 @@ export function runAgentGuardAlign(format, opts = {}) {
       stderr += chunk;
     });
     child.on("error", (err) => {
-      resolve({
+      finish({
         code: 1,
         stdout,
         stderr: err?.message ?? String(err),
       });
     });
     child.on("close", (code) => {
-      resolve({ code: code ?? 1, stdout, stderr });
+      finish({ code: code ?? 1, stdout, stderr });
     });
   });
 }
@@ -127,6 +183,7 @@ export async function runAlignHook(modeArg, deps = {}) {
   const writeStdout = deps.writeStdout ?? ((s) => process.stdout.write(s));
   const readStdinFn = deps.readStdinFn ?? readStdin;
   const format = MODES[modeArg];
+  const isSessionStart = format === "hook-session-start";
 
   // Drain Claude hook stdin so the parent does not hang on a live pipe.
   const stdinRaw = await readStdinFn();
@@ -156,11 +213,17 @@ export async function runAlignHook(modeArg, deps = {}) {
       stderr: (result.stderr || "").trim().slice(0, 500),
       durMs,
     });
+    // Keep FileChanged watching even when npx/agent-guard is unavailable.
+    if (isSessionStart) {
+      writeStdout(buildSessionStartWatchPayload(env));
+    }
     return 0;
   }
 
   if (result.stdout) {
     writeStdout(result.stdout);
+  } else if (isSessionStart) {
+    writeStdout(buildSessionStartWatchPayload(env));
   }
   log.info("align-plugin-mcps ok", {
     format,
