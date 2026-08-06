@@ -18,7 +18,6 @@ trap 'rm -f "${tmp:-}"' EXIT
 NETRC="$HOME/.netrc"
 MP_PATH="/ml/core/api/v1/ai-registry/agent-plugins/custom/marketplace/claude-marketplace.json"
 MP_PREFIXES=("" "/bridge-client")   # SaaS first, then self-hosted (Bridge Client)
-WHOAMI_PATH="/access/api/v1/tokens/me"
 
 urlenc() { jq -rn --arg x "$1" '$x|@uri'; }
 
@@ -45,27 +44,19 @@ cfg=$(jf config export 2>/dev/null | base64 -d 2>/dev/null || true)
 SID=$(jq -r '.serverId    // empty' <<<"$cfg")
 JFROG_URL=$(jq -r '.url         // empty' <<<"$cfg")
 TOKEN=$(jq -r '.accessToken // empty' <<<"$cfg")
+LOGIN=$(jq -r '.user        // empty' <<<"$cfg")
 
 JFROG_URL="${JFROG_URL%/}"
 SCHEME="${JFROG_URL%%://*}"
 BASE="${JFROG_URL#*://}"          # keeps any /path prefix
 HOST="${BASE%%/*}"                # for netrc
 
-[[ -n "$TOKEN" ]] || {
-  echo "ERROR: no access token stored in jf config for '$SID'. Run 'jf login'"    >&2
-  echo "       or 'jf config add --access-token <T>' to configure one, then retry." >&2
+[[ -n "$TOKEN" && -n "$LOGIN" ]] || {
+  echo "ERROR: missing access token or username in jf config for '$SID'. Run 'jf login'" >&2
   exit 1
 }
 [[ -n "$SID" && -n "$SCHEME" && -n "$HOST" ]] || {
   echo "ERROR: could not parse default jf server URL." >&2
-  exit 1
-}
-
-# Resolve username from the token's subject: "<issuer>/users/<username>".
-subject=$(jf api --server-id "$SID" "$WHOAMI_PATH" 2>/dev/null | jq -r '.subject // empty')
-LOGIN="${subject##*/users/}"
-[[ -n "$LOGIN" && "$LOGIN" != "$subject" ]] || {
-  echo "ERROR: could not resolve username for '$SID' via $WHOAMI_PATH." >&2
   exit 1
 }
 
