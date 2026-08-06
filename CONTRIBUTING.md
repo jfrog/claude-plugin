@@ -14,9 +14,10 @@ All contributors must sign the [JFrog CLA](https://jfrog.com/cla/) before contri
 
 ```bash
 node scripts/validate-claude-plugin.mjs
+node --test modules/claude-align-plugin-mcps.test.mjs
 ```
 
-This checks `.claude-plugin/plugin.json` and walks every `skills/*/SKILL.md` for required YAML frontmatter. Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
+This checks `.claude-plugin/plugin.json` and walks every `skills/*/SKILL.md` for required YAML frontmatter. The second command runs the Agent Guard align-hook unit tests (Node’s built-in test runner). Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
 
 4. **Test** by loading the repository as the plugin (the repo root is the plugin root):
 
