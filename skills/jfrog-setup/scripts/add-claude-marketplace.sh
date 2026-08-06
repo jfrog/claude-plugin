@@ -70,18 +70,6 @@ LOGIN="${subject##*/users/}"
   exit 1
 }
 
-MARKETPLACE_PATH=""
-for prefix in "${MP_PREFIXES[@]}"; do
-  path="${prefix}${MP_PATH}"
-  jf api --server-id "$SID" "$path" >/dev/null 2>&1 || continue
-  MARKETPLACE_PATH="$path"
-  break
-done
-[[ -n "$MARKETPLACE_PATH" ]] || {
-  echo "ERROR: marketplace endpoint not found on '$SID'." >&2
-  exit 1
-}
-
 # mktemp creates the file at mode 600; mv preserves the mode.
 tmp=$(mktemp "${NETRC}.XXXXXX")
 {
@@ -90,8 +78,14 @@ tmp=$(mktemp "${NETRC}.XXXXXX")
 } > "$tmp"
 mv "$tmp" "$NETRC"
 
-URL="${SCHEME}://$(urlenc "$LOGIN"):$(urlenc "$TOKEN")@${BASE}${MARKETPLACE_PATH}"
-
-status=0
-claude plugin marketplace add "$URL" || status=$?
-exit "$status"
+# Try SaaS path, then self-hosted (Bridge Client).
+out=""
+for prefix in "${MP_PREFIXES[@]}"; do
+  URL="${SCHEME}://$(urlenc "$LOGIN"):$(urlenc "$TOKEN")@${BASE}${prefix}${MP_PATH}"
+  if out=$(claude plugin marketplace add "$URL" 2>&1); then
+    printf '%s\n' "$out"
+    exit 0
+  fi
+done
+printf '%s\n' "$out" >&2
+exit 1
