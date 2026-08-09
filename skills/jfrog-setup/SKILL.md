@@ -7,7 +7,7 @@ description: >-
   marketplace.
 disable-model-invocation: true
 compatibility: >-
-  Requires Node.js (>= 18) and network access to the JFrog platform.
+  Requires Node.js 18 or newer and network access to the JFrog platform.
 allowed-tools: Bash Read
 metadata:
   role: workflow
