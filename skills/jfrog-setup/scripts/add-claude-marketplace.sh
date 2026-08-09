@@ -17,7 +17,7 @@ trap 'rm -f "${tmp:-}"' EXIT
 
 NETRC="$HOME/.netrc"
 MP_PATH="/ml/core/api/v1/ai-registry/agent-plugins/custom/marketplace/claude-marketplace.json"
-MP_PREFIXES=(""/bridge-client")   # SaaS first, then self-hosted (Bridge Client)
+MP_PREFIXES=("","/bridge-client")   # SaaS first, then self-hosted (Bridge Client)
 
 urlenc() { jq -rn --arg x "$1" '$x|@uri'; }
 
