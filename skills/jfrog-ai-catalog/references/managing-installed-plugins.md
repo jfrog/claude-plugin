@@ -1,10 +1,5 @@
 # Managing installed plugins
 
-List installed and remove are **local-only** — they proceed on any Step 0 exit
-code (see [agent-guard-activation.md](agent-guard-activation.md)). Do not block
-these flows when the Agent Guard check fails. If you use `--check-updates`, that
-flag hits the registry: skip it when Step 0 is non-zero.
-
 ## List currently installed plugins
 
 A plugin can be installed in two separate places: the **project/harness** location

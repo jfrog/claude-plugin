@@ -5,11 +5,6 @@ name with the user before publishing**. Resolve the repo and read the name from
 the bundle, then show both and wait for an explicit "yes". Never publish on the
 initial request alone, and never auto-pick a repo without surfacing it first.
 
-**Prerequisite — Step 0.** Before Agent Guard provisioning or
-`jf agent plugins publish`, run the Agent Guard activation check and interpret
-the exit code per [agent-guard-activation.md](agent-guard-activation.md). Do not
-publish on a non-zero exit (except the listed exception).
-
 ## Contents
 
 - Resolve the target repository

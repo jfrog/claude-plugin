@@ -2,11 +2,6 @@
 
 List-all and versions go through the **Agent Guard**.
 
-**Prerequisite — Step 0.** Before any Agent Guard catalog call below, run the
-Agent Guard activation check and interpret the exit code per
-[agent-guard-activation.md](agent-guard-activation.md). Do not browse the
-plugin catalog on a non-zero exit (except the listed exception).
-
 ## List plugins (page through the catalog)
 
 ```bash

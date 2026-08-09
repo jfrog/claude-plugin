@@ -24,47 +24,9 @@ Catalog (Artifactory skills/plugins repositories), and publish your own back to
 it, all through the JFrog CLI (`jf skills`, `jf agent plugins`) and the JFrog
 Agent Guard.
 
-In code examples below, `<skill_path>` refers to this skill's directory and is
-resolved automatically by the agent. If the agent does not resolve it, determine
-the path by locating this SKILL.md file and using its parent directory.
-
-## Step 0: Agent Guard activation (silent, mandatory for plugin catalog / download)
-
-Before any **plugin** flow that hits the catalog or downloads from the registry
-(discover / install / update / publish), run the following and WAIT for its
-exit code — do not narrate that you are running it:
-
-```bash
-# When no server ID is known (common single-server case):
-node "<skill_path>/scripts/jfrog-agent-guard-check.mjs"
-# When a specific server ID is known from context:
-node "<skill_path>/scripts/jfrog-agent-guard-check.mjs" <SERVER_ID>
-```
-
-Substitute the real value for `<SERVER_ID>` — never pass a literal `[...]` or
-`<SERVER_ID>`. Prefer the `<SID>` already resolved from the server selection
-rules below so the gate checks the JPD you will actually target. Omit it when
-unknown; the check then uses env credentials or the CLI default server.
-
-Interpret the exit code per
-[references/agent-guard-activation.md](references/agent-guard-activation.md).
-Run it FRESH on every activation — never cache or reuse a previous result.
-
-- **Discover plugins**, **Install / update a plugin**, and **Publish a plugin**
-  proceed only on Exit 0 (or the listed disabled-state exception) — they call
-  the catalog or download over the network.
-- **List currently installed plugins** and **Remove a plugin** are local-only
-  (no catalog entitlement required), so they proceed on ANY exit code. Never let
-  a non-zero Step 0 stop a "what plugins do I have installed?" or uninstall
-  request. If listing with `--check-updates`, that flag needs the registry —
-  skip it when Step 0 is non-zero.
-- Skill flows (discover / install / manage / publish **skills**) are unchanged
-  by this gate; follow their reference files as before.
-
 ## Choose a reference file
 
 Pick the row matching the user's intent and read that reference file.
-After Step 0 (when required for that intent), jump to the matching file.
 
 | Intent | Read |
 |--------|------|
@@ -72,10 +34,10 @@ After Step 0 (when required for that intent), jump to the matching file.
 | Install or update a skill (latest or a pinned version), or a download is blocked | [references/installing-skills.md](references/installing-skills.md) |
 | "What's installed?" / remove an installed skill | [references/managing-installed-skills.md](references/managing-installed-skills.md) |
 | Publish / upload / release a skill to the catalog | [references/publishing-skills.md](references/publishing-skills.md) |
-| "What plugins are available?" / browse the plugin catalog / list plugin versions / search plugins | Step 0, then [references/discovering-plugins.md](references/discovering-plugins.md) |
-| Install or update a plugin (latest or a pinned version) | Step 0, then [references/installing-plugins.md](references/installing-plugins.md) |
-| "What plugins are installed?" / remove an installed plugin | [references/managing-installed-plugins.md](references/managing-installed-plugins.md) (Step 0 optional; never blocks) |
-| Publish / upload / release a plugin to the catalog | Step 0, then [references/publishing-plugins.md](references/publishing-plugins.md) |
+| "What plugins are available?" / browse the plugin catalog / list plugin versions / search plugins | [references/discovering-plugins.md](references/discovering-plugins.md) |
+| Install or update a plugin (latest or a pinned version) | [references/installing-plugins.md](references/installing-plugins.md) |
+| "What plugins are installed?" / remove an installed plugin | [references/managing-installed-plugins.md](references/managing-installed-plugins.md) |
+| Publish / upload / release a plugin to the catalog | [references/publishing-plugins.md](references/publishing-plugins.md) |
 
 ## Prerequisites
 
@@ -135,14 +97,10 @@ flowchart TD
     D -->|Install / update skill| F[Resolve slug + version, then jf skills install/update]
     D -->|List installed skills / remove| G[jf skills list / rm -rf install dir]
     D -->|Publish skill| H[Resolve/provision repo, validate bundle, jf skills publish]
-    D -->|Plugin discover / install / update / publish| S0[Step 0: agent-guard-check.mjs]
-    S0 -->|Exit 0| P{Plugin intent}
-    S0 -->|Exit 2| Stop[Tell user AI Catalog disabled; stop]
-    S0 -->|Other non-zero| Abort[Silently abort catalog/download]
-    P -->|List all plugins / versions| I[npx @jfrog/agent-guard --list-agent-plugins]
-    P -->|Install / update plugin| J[Resolve slug + version, then jf agent plugins install/update]
-    P -->|Publish plugin| L[Resolve/provision repo, validate bundle, jf agent plugins publish]
+    D -->|List all plugins / versions| I[npx @jfrog/agent-guard --list-agent-plugins]
+    D -->|Install / update plugin| J[Resolve slug + version, then jf agent plugins install/update]
     D -->|List installed plugins / remove| K[jf agent plugins list / rm -rf install dir]
+    D -->|Publish plugin| L[Resolve/provision repo, validate bundle, jf agent plugins publish]
 ```
 
 ## Gotchas
@@ -166,7 +124,3 @@ the reference files above.
 - **Plugins have no Xray support**: skip all Xray-related handling (no 403
   gating on download, no inline scan on publish, no `--skip-scan` flag) when
   performing any `jf agent plugins` operation.
-- **Plugin catalog entitlement**: discover / install / update / publish plugins
-  require Step 0 Exit 0 (see
-  [references/agent-guard-activation.md](references/agent-guard-activation.md)).
-  List-installed and remove do not.
