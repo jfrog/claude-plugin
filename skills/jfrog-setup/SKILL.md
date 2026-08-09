@@ -1,11 +1,14 @@
 ---
 name: jfrog-setup
 description: >-
-  Claude Code only. Do not run in Cursor, Gemini, or other harnesses.
   Registers the JFrog unified Claude agent-plugin marketplace in Claude
   Code so plugins in `agentplugins` repos become installable via
   `/plugin install`. Use to add or set up the JFrog agent-plugin
   marketplace.
+disable-model-invocation: true
+compatibility: >-
+  Requires Node.js (>= 18) and network access to the JFrog platform.
+allowed-tools: Bash Read
 metadata:
   role: workflow
   harness: claude-code
@@ -24,7 +27,7 @@ metadata:
 
 1. Run:
    ```bash
-   bash <skill_path>/scripts/add-claude-marketplace.sh
+   node <skill_path>/scripts/jfrog-add-claude-marketplace.mjs
    ```
 
 2. On success the last line is `Successfully added marketplace: <marketplace-name>`.
