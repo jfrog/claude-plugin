@@ -3,6 +3,23 @@
 Install and update both download from the registry, so they share the same
 `--repo`/`--quiet` rules and verify-landed check.
 
+**Prerequisite — entitlement check (reuses the MCP gate).** Before the first
+download (`jf agent plugins install` / `update`), run the shared Agent Guard
+activation check and WAIT for its exit code — do not narrate that you are
+running it. Pass the resolved `<SID>` when known:
+
+```bash
+node "../../jfrog-mcp-management/scripts/jfrog-agent-guard-check.mjs" "<SID>"
+```
+
+Interpret the exit code per
+[`../../jfrog-mcp-management/references/agent-guard-activation.md`](../../jfrog-mcp-management/references/agent-guard-activation.md),
+reading "MCP registry" as the AI Catalog / Agent Guard entitlement: proceed only
+on Exit 0; on Exit 2 tell the user the AI Catalog is disabled on their platform
+and to contact their admin/IT, then stop; on any other non-zero exit, abort the
+install/update. This gate applies only to download flows — listing installed
+plugins and removing a plugin are local-only and never blocked.
+
 ## Contents
 
 - When evidence verification fails
