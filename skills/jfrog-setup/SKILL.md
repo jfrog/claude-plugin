@@ -18,19 +18,22 @@ metadata:
 
 ## Prerequisites
 
-- Read the base [`jfrog` skill](../jfrog/SKILL.md) first for the `jf`
-  CLI environment check.
-- The `CLAUDECODE` env var must be set. If it is unset, this skill does
-  not apply to the current session. Do not proceed.
+Read the base [`jfrog` skill](../jfrog/SKILL.md) and run its
+[environment check](../jfrog/SKILL.md#environment-check).
 
 ## Steps
 
-1. Run:
+1. Inspect the environment-check stdout for `tool=<harness>`. If `tool`
+   is not `claude`, skip the remaining steps and reply exactly:
+
+   > Skipping marketplace registration.
+
+2. Run:
    ```bash
    node <skill_path>/scripts/jfrog-add-claude-marketplace.mjs
    ```
 
-2. On success the last line is `Successfully added marketplace: <marketplace-name>`.
+3. On success the last line is `Successfully added marketplace: <marketplace-name>`.
    Extract `<marketplace-name>` and reply using **this exact template**:
 
    > Added the JFrog agent-plugin marketplace `<marketplace-name>` to Claude Code.
