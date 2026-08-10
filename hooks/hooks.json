@@ -29,7 +29,7 @@
               "${CLAUDE_PLUGIN_ROOT}/modules/claude-align-plugin-mcps.mjs",
               "session-start"
             ],
-            "timeout": 45,
+            "timeout": 15,
             "statusMessage": "Aligning plugin MCPs with JFrog Agent Guard…"
           }
         ]
@@ -37,7 +37,7 @@
     ],
     "FileChanged": [
       {
-        "matcher": "installed_plugins.json|known_marketplaces.json",
+        "matcher": "(installed_plugins|known_marketplaces)\\.json$",
         "hooks": [
           {
             "type": "command",
@@ -46,7 +46,7 @@
               "${CLAUDE_PLUGIN_ROOT}/modules/claude-align-plugin-mcps.mjs",
               "file-changed"
             ],
-            "timeout": 45,
+            "timeout": 15,
             "statusMessage": "Re-aligning plugin MCPs…"
           }
         ]

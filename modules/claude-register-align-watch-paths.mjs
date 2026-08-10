@@ -6,8 +6,6 @@
 // Kill switch: JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1 → no-op (exit 0, no stdout).
 
 import process from "node:process";
-import { pathToFileURL } from "node:url";
-import path from "node:path";
 
 import {
   DISABLE_ENV,
@@ -15,7 +13,8 @@ import {
   isAlignDisabled,
 } from "./claude-align-plugin-mcps.mjs";
 import { createLogger, setLogContext } from "./core/logger.mjs";
-import { readStdin, parseSessionId } from "./core/io.mjs";
+import { readStdin, parseSessionId, detectHarness } from "./core/io.mjs";
+import { isMainEntry } from "./core/entry.mjs";
 
 const HARNESS_ID = "claude_code";
 const log = createLogger("register-align-watch-paths");
@@ -36,6 +35,12 @@ export async function runRegisterWatchPaths(deps = {}) {
   const stdinRaw = await readStdinFn();
   setLogContext({ ide: HARNESS_ID, sessionId: parseSessionId(stdinRaw) });
 
+  const harness = detectHarness(stdinRaw);
+  if (harness && harness !== HARNESS_ID) {
+    log.info("invoked by another harness; no-op", { harness });
+    return 0;
+  }
+
   if (isAlignDisabled(env)) {
     log.info("align disabled via env; skip watchPaths", { env: DISABLE_ENV });
     return 0;
@@ -52,13 +57,7 @@ async function main() {
 }
 
 function isExecutedDirectly() {
-  const entry = process.argv[1];
-  if (!entry) return false;
-  try {
-    return import.meta.url === pathToFileURL(path.resolve(entry)).href;
-  } catch {
-    return false;
-  }
+  return isMainEntry(import.meta.url);
 }
 
 if (isExecutedDirectly()) {

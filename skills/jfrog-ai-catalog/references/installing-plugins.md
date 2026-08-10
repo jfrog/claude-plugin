@@ -3,10 +3,12 @@
 Install and update both download from the registry, so they share the same
 `--repo`/`--quiet` rules and verify-landed check.
 
-**Prerequisite — entitlement check (reuses the MCP gate).** Before the first
-download (`jf agent plugins install` / `update`), run the shared Agent Guard
-activation check and WAIT for its exit code — do not narrate that you are
-running it. Pass the resolved `<SID>` when known:
+**Prerequisite — Agent Guard activation check (agent-instruction only).**
+Before the first download (`jf agent plugins install` / `update`), run the same
+Step 0 script as `jfrog-mcp-management` and WAIT for its exit code — do not
+narrate that you are running it. This is not enforced inside
+`jf agent plugins install` itself; a skipped check has no CLI backstop. Pass
+the resolved `<SID>` when known:
 
 ```bash
 node "../../jfrog-mcp-management/scripts/jfrog-agent-guard-check.mjs" "<SID>"
