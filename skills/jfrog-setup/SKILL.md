@@ -22,10 +22,26 @@ metadata:
 
    > Skipping marketplace registration.
 
-2. Ask the user in chat and wait for their reply. **Do not use
-   `AskUserQuestion`.** Use exactly this question:
+2. Ask the user via `AskUserQuestion` whether to use the default name
+   or a custom one:
 
-   > Adding the JFrog AI Catalog marketplace. Register it as `jfrog-ai-catalog` (default), or give me a custom kebab-case name (max 128 chars)?
+   ```json
+   {
+     "questions": [{
+       "question": "Adding the JFrog AI Catalog marketplace. Register under which name?",
+       "header": "Marketplace name",
+       "multiSelect": false,
+       "options": [
+         {"label": "Use default", "description": "Register as jfrog-ai-catalog"},
+         {"label": "Use a custom name", "description": "You will provide a kebab-case name (max 128 chars)"}
+       ]
+     }]
+   }
+   ```
+
+   On "Use default", pass `jfrog-ai-catalog` to Step 3. On "Use a custom
+   name", ask in chat for the exact name, wait for the reply, then pass
+   that value to Step 3.
 
 3. Run with the picked name as the sole argument:
    ```bash
