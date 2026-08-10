@@ -2,7 +2,8 @@
 // Register the JFrog unified Claude agent-plugin marketplace with Claude
 // Code for the default `jf` server. Token stays in-process, never on disk.
 //
-// Usage: node jfrog-add-claude-marketplace.mjs
+// Usage: node jfrog-add-claude-marketplace.mjs [marketplace-name]
+//   Defaults to "jfrog-ai-catalog". Sent as `?name=<v>` to the endpoint.
 //
 // Exit 0 -> success
 // Exit 1 -> no default jf server, no access token, or marketplace add failed
@@ -16,6 +17,8 @@ import { join } from "node:path";
 const NETRC = join(homedir(), ".netrc");
 const MP_PATH = "/ml/core/api/v1/ai-registry/agent-plugins/custom/marketplace/claude-marketplace.json";
 const MP_PREFIXES = ["", "/bridge-client"]; // SaaS first, then self-hosted
+const MP_NAME = (process.argv[2] || "").trim() || "jfrog-ai-catalog";
+const MP_QUERY = `?name=${encodeURIComponent(MP_NAME)}`;
 
 function fail(msg, code = 1) {
   process.stderr.write(msg + "\n");
@@ -128,7 +131,7 @@ try {
 // Try SaaS path first, then self-hosted (Bridge Client). First success wins.
 let lastOut = "";
 for (const prefix of MP_PREFIXES) {
-  const url = `${scheme}://${encodeURIComponent(LOGIN)}:${encodeURIComponent(TOKEN)}@${base}${prefix}${MP_PATH}`;
+  const url = `${scheme}://${encodeURIComponent(LOGIN)}:${encodeURIComponent(TOKEN)}@${base}${prefix}${MP_PATH}${MP_QUERY}`;
   const r = spawnSync("claude", ["plugin", "marketplace", "add", url], { encoding: "utf8" });
   lastOut = `${r.stdout || ""}${r.stderr || ""}`;
   if (r.status === 0) {
