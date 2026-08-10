@@ -12,7 +12,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook + Skill** | Agent Package Resolution (Preview) | Automatically route packages installed by the AI agent through your organization's JFrog Artifactory, keeping agent-driven installs inside your Curation, Xray, and governance perimeter. |
-| **Skill** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
+| **Hook + Skill** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. On SessionStart (and when Claude plugin install metadata changes), the plugin also rewrites installed-plugin stdio MCPs to launch via `@jfrog/agent-guard`. Set `JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1` to turn that rewrite off. |
 
 ---
 
@@ -119,6 +119,16 @@ When Agent Package Resolution is enabled and configured, no special prompt synta
 | "Pull the `alpine` Docker image."      | Pulls the image through the configured Artifactory Docker repository.    |
 
 ### MCP server management (Agent Guard)
+
+On every Claude Code SessionStart, the plugin registers FileChanged watch paths for `installed_plugins.json` / `known_marketplaces.json`, then runs `npx @jfrog/agent-guard --align-plugin-mcps` so installed-plugin stdio MCPs launch through Agent Guard (required when enterprise policy only allows that command). The same align runs again when those files change. If configs were rewritten, Claude asks you to `/reload-plugins`.
+
+The version of `@jfrog/agent-guard` this hook executes is **pinned** in `modules/claude-align-plugin-mcps.mjs`, so a session start never runs whatever the registry currently tags as `latest`. The align is network-bound but capped: it is abandoned after 10s (and the `npx` process tree is terminated) so a session start on an offline or VPN-gated machine falls back to the plain watch-paths payload instead of stalling.
+
+| Environment variable | Effect |
+| --- | --- |
+| `JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1` | Disables the align entirely (no `npx`, no network). |
+| `JFROG_AGENT_GUARD_REPO` | npm registry to resolve `@jfrog/agent-guard` from (defaults to the JFrog releases registry). |
+| `JFROG_AGENT_GUARD_VERSION` | Overrides the pinned version — set an exact version to track your own mirror, or `latest` to always take the newest release. |
 
 | Ask the agent… | What happens |
 | --- | --- |
