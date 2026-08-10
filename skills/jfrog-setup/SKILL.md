@@ -14,10 +14,11 @@ metadata:
 
 ## Steps
 
-1. Run the base [`jfrog` skill](../jfrog/SKILL.md)'s
-   [environment check](../jfrog/SKILL.md#environment-check) and inspect
-   its stdout for `tool=<harness>`. If `tool` is not `claude`, skip the
-   remaining steps and reply exactly:
+1. **Live execution is MANDATORY — context reuse is FORBIDDEN.** Run
+   the base [`jfrog` skill](../jfrog/SKILL.md)'s
+   [environment check](../jfrog/SKILL.md#environment-check) via a tool
+   call in this turn and read `tool=<harness>` from its stdout. If
+   `tool` is not `claude`, skip the remaining steps and reply exactly:
 
    > Skipping marketplace registration.
 
