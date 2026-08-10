@@ -22,8 +22,8 @@ metadata:
 
    > Skipping marketplace registration.
 
-2. Ask the user in chat and wait for their reply. Use exactly this
-   question:
+2. Ask the user in chat and wait for their reply. **Do not use
+   `AskUserQuestion`.** Use exactly this question:
 
    > Adding the JFrog AI Catalog marketplace. Register it as `jfrog-ai-catalog` (default), or give me a custom kebab-case name (max 128 chars)?
 
