@@ -88,7 +88,7 @@ environment check and **remember its stdout** as `<UA>` for the rest of the
 session:
 
 ```bash
-bash <skill_path>/scripts/check-environment.sh <model-slug>
+node <skill_path>/scripts/check-environment.mjs <model-slug>
 # stdout (one line): jfrog-skills/<version> [(tool=<harness>; model=<model-slug>)] jfrog-cli-go/<cli-version>
 # stderr: JSON state (cached 24h at ${JFROG_CLI_HOME_DIR:-$HOME/.jfrog}/skills-cache/jfrog-skill-state.json)
 ```
@@ -140,7 +140,7 @@ Use **`jq`** for all JSON parsing of CLI and API output (pipes, `-r`, filters).
 `${JFROG_CLI_HOME_DIR:-$HOME/.jfrog}/skills-cache/` is **not** a general scratch
 or temp directory. Use it **only** for these two artifacts:
 
-1. **`jfrog-skill-state.json`** — written by `scripts/check-environment.sh`
+1. **`jfrog-skill-state.json`** — written by `scripts/check-environment.mjs`
    (24-hour CLI check cache).
 2. **`onemodel-schema-${JFROG_SERVER_ID}.graphql`** — cached OneModel supergraph
    schema (see `references/onemodel-graphql.md`).

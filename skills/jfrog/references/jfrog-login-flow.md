@@ -33,7 +33,7 @@ another server on error** — see SKILL.md **Server selection rules**.
 ### 1. Verify server and register session
 
 ```bash
-bash <skill_path>/scripts/jfrog-login-register-session.sh "https://mycompany.jfrog.io"
+node <skill_path>/scripts/jfrog-login-register-session.mjs "https://mycompany.jfrog.io"
 ```
 
 The script pings the server, generates a session UUID, and registers it with
@@ -46,7 +46,7 @@ VERIFY_CODE=<last 4 chars>
 
 Exit codes: 0 = success, 2 = server unreachable, 3 = registration failed.
 
-### 2. Show the user the verification code and login link
+### 2. Open the login link and show the verification code
 
 Build the login URL:
 
@@ -54,11 +54,26 @@ Build the login URL:
 ${JFROG_PLATFORM_URL}/ui/login?jfClientSession=${SESSION_UUID}&jfClientName=JFrog-Skills&jfClientCode=1
 ```
 
-Show the verification code prominently, then the clickable link:
+Open it in the user's default browser automatically — don't just print
+the link and ask them to click it themselves. Use the OS-appropriate
+opener:
+
+```bash
+open "<login-url>"          # macOS
+xdg-open "<login-url>"      # Linux
+start "" "<login-url>"      # Windows (cmd) / `Start-Process "<login-url>"` in PowerShell
+```
+
+If the opener command fails or isn't available (headless/remote
+session, no `$DISPLAY`, etc.), fall back to showing the link as text so
+the user can open it manually — don't treat that as a hard failure.
+
+Show the verification code prominently, then confirm the link was
+opened (or provide it, on fallback):
 
 > ## Verification code: `<last 4 chars of SESSION_UUID>`
 >
-> Open the login link from above, then enter the code.
+> I've opened the login page in your browser — enter the code above.
 >
 > Let me know when you're done.
 
@@ -67,7 +82,7 @@ Wait for the user to confirm. Do not poll automatically.
 ### 3. Retrieve token, save credentials, verify
 
 ```bash
-bash <skill_path>/scripts/jfrog-login-save-credentials.sh \
+node <skill_path>/scripts/jfrog-login-save-credentials.mjs \
   "https://mycompany.jfrog.io" \
   "<SESSION_UUID from step 1>"
 ```
@@ -128,5 +143,5 @@ but if it exits non-zero after consuming the token, restart from step 1.
 - Server ID is derived from the hostname: `https://mycompany.jfrog.io`
 becomes `mycompany`. Self-hosted URLs are slugified:
 `https://artifactory.internal.corp` becomes `artifactory-internal-corp`.
-- `**jf`**, `**uuidgen**` (register-session), and `**jq**` (save-credentials) must be on PATH.
+- `**jf**` must be on PATH. Both scripts are pure Node — neither `uuidgen` nor `jq` is required.
 
