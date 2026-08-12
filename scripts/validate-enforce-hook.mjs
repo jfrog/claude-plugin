@@ -3,27 +3,53 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Tests the skill-enforcement hook wiring. hooks.json invokes the plugin's Node wrapper
-// (scripts/enforce-skill.mjs) in EXEC FORM — no shell, so it behaves identically on macOS,
-// Linux, and Windows (with or without Git Bash). The wrapper itself contains no governance
-// logic; it only transports the hook event to agent-guard and agent-guard's response back.
-// These checks assert the hooks.json wiring's shape and then RUN the wrapper against a stub
-// agent-guard to prove byte forwarding, the npx fallback, and the fail-closed exit semantics.
+// Tests the skill-enforcement hook wiring. hooks.json invokes agent-guard DIRECTLY via npx —
+// no plugin-side wrapper script, so there is no plugin code in the enforcement path at all.
+// Two properties make that safe, and both are asserted by executing the real command string
+// out of hooks.json against a stub npx:
+//
+//   1. npx ONLY. There is deliberately no `command -v agent-guard` fast path: an agent-guard
+//      earlier on PATH could be anything, whereas npx always resolves the package from the
+//      pinned registry. Dropping that branch removes the hijack vector AND removes the
+//      `command -v` that used to force POSIX-only syntax.
+//   2. `|| exit 2` is load-bearing and cannot be replaced by an exit code inside agent-guard.
+//      Claude Code blocks a PreToolUse hook on exit 2 ONLY; 1, 127 and spawn failures are all
+//      non-blocking (the tool call proceeds). So when npx itself is missing the shell returns
+//      127 and agent-guard never runs — nothing inside agent-guard could have blocked. Only
+//      the `|| exit 2` in the hook converts that into a block.
+//
+// `"shell": "bash"` is set explicitly so Windows-without-Git-Bash fails LOUDLY (Claude Code
+// raises a visible "requires bash … Install Git for Windows" hook error) instead of silently:
+// left to default, such a machine runs the command under PowerShell, where `||` is a parse
+// error that exits 1 — non-blocking, i.e. governance silently fails OPEN.
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const wrapperPath = path.join(repoRoot, "scripts", "enforce-skill.mjs");
 const waiverHelperPath = path.join(repoRoot, "scripts", "governance", "request-waiver.mjs");
 const hooks = JSON.parse(readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
 const sandbox = mkdtempSync(path.join(tmpdir(), "enforce-hook-"));
 const binDir = path.join(sandbox, "bin");
 mkdirSync(binDir, { recursive: true });
+
+// A directory holding ONLY node, so the stub's shebang resolves while the real npx stays
+// unreachable. Using node's own directory instead would silently defeat the "npx is missing"
+// check: the real npx sits right beside node, so that check would reach the network and hang
+// on a genuine 33 MB download rather than exercising the 127 path.
+const nodeDir = path.join(sandbox, "node-only");
+mkdirSync(nodeDir, { recursive: true });
+symlinkSync(process.execPath, path.join(nodeDir, "node"));
+
+const RELEASES_REGISTRY = "https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/";
+const GOVERNED_EVENTS = ["PreToolUse", "UserPromptExpansion"];
+// Claude Code resolves `shell: "bash"` itself; here we only need A bash to execute the same
+// string. /bin/bash exists on macOS and Linux, which is where this validator runs.
+const BASH = "/bin/bash";
 
 const failures = [];
 const check = async (label, fn) => {
@@ -31,8 +57,6 @@ const check = async (label, fn) => {
   catch (e) { failures.push(label); console.log(`  FAIL ${label}\n         ${e.message}`); }
 };
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
-
-const SHELL_SYNTAX_MARKERS = ["if ", "||", "2>&1", "command -v", "${...:-", "${JFROG_AGENT_GUARD_REPO:-"];
 
 function entriesFor(event) {
   return hooks?.hooks?.[event] ?? [];
@@ -42,9 +66,11 @@ function hooksFor(event) {
   return entriesFor(event).flatMap((entry) => entry.hooks ?? []);
 }
 
-// A stub agent-guard that records argv+stdin and replays a canned result.
-function stubAgentGuard({ stdout = "", exitCode = 0 }) {
+// A stub npx that records the argv it was handed and the stdin it received, then replays a
+// canned result. Installed as `npx` so the hook command finds it first on PATH.
+function stubNpx({ stdout = "", exitCode = 0 }) {
   const record = path.join(sandbox, "record.json");
+  rmSync(record, { force: true });
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 let input = "";
@@ -55,24 +81,36 @@ process.stdin.on("end", () => {
   process.exit(${exitCode});
 });
 `;
-  writeFileSync(path.join(binDir, "agent-guard"), script, { mode: 0o755 });
-  chmodSync(path.join(binDir, "agent-guard"), 0o755);
+  const p = path.join(binDir, "npx");
+  writeFileSync(p, script, { mode: 0o755 });
+  chmodSync(p, 0o755);
   return record;
 }
 
-// Run the Node wrapper the way Claude Code does: exec form, no shell, hook event JSON on
-// stdin, with the env Claude Code would supply.
-function runWrapper(payload, extraEnv = {}) {
-  const result = spawnSync("node", [wrapperPath], {
+// Run the hook exactly as Claude Code does for `shell: "bash"`: the command string from
+// hooks.json handed to bash -c, hook event JSON on stdin, with the env Claude Code supplies.
+// `isolate` drops the stub bin dir from PATH, which is how the "npx is not installed at all"
+// case is reproduced.
+function runHookCommand(command, payload, { extraEnv = {}, isolate = false } = {}) {
+  // An ABSOLUTE bash: the PATH below is deliberately minimal (it is how the "npx is not
+  // installed" case is reproduced), so `bash` by name would not resolve and spawnSync would
+  // fail with status null before the command ever ran.
+  const result = spawnSync(BASH, ["-c", command], {
     input: Buffer.from(payload),
     encoding: "buffer",
+    // No check should ever reach the network; a hang means the stub was bypassed, and failing
+    // fast beats waiting on a real npx download.
+    timeout: 30_000,
     env: {
-      PATH: `${binDir}:${process.env.PATH}`,
+      // Deliberately minimal: node stays reachable for the stub's shebang, and nothing else —
+      // in particular no real npx — is on it.
+      PATH: isolate ? nodeDir : `${binDir}:${nodeDir}`,
       HOME: sandbox,
       CLAUDE_PLUGIN_ROOT: repoRoot,
       ...extraEnv,
     },
   });
+  if (result.error) throw new Error(`could not run the hook command via ${BASH}: ${result.error.message}`);
   return {
     code: result.status,
     stdout: result.stdout ? result.stdout.toString() : "",
@@ -80,11 +118,13 @@ function runWrapper(payload, extraEnv = {}) {
   };
 }
 
+const commandFor = (event) => hooksFor(event)[0].command;
+
 console.log("Validating the skill-enforcement hook wiring…");
 
-check("hooks.json is valid JSON and keeps the SessionStart hook byte-identical", () => {
-  assert(Array.isArray(hooks?.hooks?.SessionStart), "SessionStart entry missing");
-  const sessionStart = hooks.hooks.SessionStart;
+check("hooks.json keeps the package-resolution SessionStart hook byte-identical", () => {
+  const sessionStart = hooks?.hooks?.SessionStart;
+  assert(Array.isArray(sessionStart), "SessionStart entry missing");
   assert(sessionStart.length === 1, "expected exactly one SessionStart entry group");
   const h = sessionStart[0]?.hooks?.[0];
   assert(
@@ -98,23 +138,34 @@ check("hooks.json is valid JSON and keeps the SessionStart hook byte-identical",
   );
 });
 
-for (const event of ["PreToolUse", "UserPromptExpansion"]) {
-  check(`${event} invokes the Node wrapper in exec form (no shell)`, () => {
+check("the npx cache pre-warm is async so it never delays session start", () => {
+  const warm = hooks.hooks.SessionStart[0].hooks[1];
+  assert(warm, "the agent-guard pre-warm SessionStart hook is missing");
+  assert(warm.async === true, "the pre-warm MUST be async, or a 33 MB cold download blocks session start");
+  assert(warm.shell === "bash", "the pre-warm uses bash syntax and must pin shell: bash");
+  assert(warm.command.includes("--version"), "the pre-warm must use --version: it exits before mode selection, so it needs no credentials and has no side effects");
+  assert(warm.command.trimEnd().endsWith("|| true"), "a failed pre-warm must never fail the session: it is only a cache warm");
+  assert(!warm.command.includes("--enforce-skill"), "the pre-warm must not run an enforcement pass");
+});
+
+for (const event of GOVERNED_EVENTS) {
+  check(`${event} invokes agent-guard through npx only, with no plugin script in the path`, () => {
     const hs = hooksFor(event);
     assert(hs.length === 1, `expected exactly one ${event} hook, got ${hs.length}`);
     const h = hs[0];
-    assert(h.command === "node", `${event} command must be exactly "node", got ${JSON.stringify(h.command)}`);
-    assert(Array.isArray(h.args) && h.args.length === 1, `${event} must pass args: [<script path>]`);
-    assert(
-      h.args[0].endsWith("scripts/enforce-skill.mjs"),
-      `${event} args[0] must point at scripts/enforce-skill.mjs, got ${h.args[0]}`,
-    );
-    assert(h.args[0].includes("${CLAUDE_PLUGIN_ROOT}"), `${event} args[0] must be rooted at \${CLAUDE_PLUGIN_ROOT}`);
-    assert(!("shell" in h), `${event} must not set a shell field`);
-    const fullCommandText = JSON.stringify(h);
-    for (const marker of SHELL_SYNTAX_MARKERS) {
-      assert(!fullCommandText.includes(marker), `${event} hook definition still contains shell syntax: ${marker}`);
-    }
+    assert(h.shell === "bash", `${event} must pin shell: "bash" so a missing Git Bash fails loudly`);
+    assert(!("args" in h), `${event} must use shell form: npx is a .cmd shim on Windows and cannot be spawned in exec form`);
+    assert(h.command.startsWith("npx "), `${event} must invoke npx directly, got: ${h.command}`);
+    assert(!h.command.includes("command -v"), `${event} must not have a PATH fast path: a hijackable agent-guard earlier on PATH would win`);
+    assert(!/\.mjs["' ]*--enforce-skill|node .*enforce-skill/.test(h.command), `${event} must not route through a plugin wrapper script`);
+    assert(h.command.includes("--enforce-skill") && h.command.includes("--client claude-code"),
+      `${event} must pass --enforce-skill --client claude-code`);
+    assert(h.command.includes('--waiver-helper "${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs"'),
+      `${event} must pass the waiver helper rooted at \${CLAUDE_PLUGIN_ROOT}`);
+    assert(h.command.trimEnd().endsWith("|| exit 2"),
+      `${event} must end in "|| exit 2": exit 1/127 are NON-blocking, so nothing else fails closed`);
+    assert(h.command.includes(RELEASES_REGISTRY),
+      `${event} must default to the releases registry, so the artifact is the published one`);
   });
 }
 
@@ -124,51 +175,87 @@ check("PreToolUse matcher covers Skill and Read", () => {
     `matcher does not cover both: ${entry?.matcher}`);
 });
 
-check("both hooks allow for an npx cold start (timeout >= 20)", () => {
-  for (const event of ["PreToolUse", "UserPromptExpansion"]) {
+check("both governed hooks allow for an npx cold start (timeout >= 20)", () => {
+  for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) assert((h.timeout ?? 0) >= 20, `${event} timeout ${h.timeout} < 20`);
   }
 });
 
-await check("forwards stdin verbatim and passes the expected flags to agent-guard", async () => {
-  const record = stubAgentGuard({ stdout: "" });
+check("the two governed hooks run byte-identical commands", () => {
+  assert(commandFor("PreToolUse") === commandFor("UserPromptExpansion"),
+    "PreToolUse and UserPromptExpansion must enforce identically; they have drifted apart");
+});
+
+// ---------------------------------------------------------------------------
+// Behavioural checks: execute the real hooks.json command string.
+// ---------------------------------------------------------------------------
+
+await check("forwards stdin verbatim and hands agent-guard the expected argv", async () => {
+  const record = stubNpx({ stdout: "" });
   const payload = `{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"demo"}}`;
-  runWrapper(payload);
+  const r = runHookCommand(commandFor("PreToolUse"), payload);
+  assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
   const seen = JSON.parse(readFileSync(record, "utf8"));
   assert(seen.stdin === payload, `stdin altered: ${seen.stdin}`);
   assert(seen.argv.includes("--enforce-skill"), `argv missing --enforce-skill: ${seen.argv}`);
   assert(seen.argv[seen.argv.indexOf("--client") + 1] === "claude-code", `bad --client: ${seen.argv}`);
-  const helper = seen.argv[seen.argv.indexOf("--waiver-helper") + 1];
-  assert(helper === waiverHelperPath, `bad --waiver-helper: ${helper}`);
+  assert(seen.argv[seen.argv.indexOf("--waiver-helper") + 1] === waiverHelperPath,
+    `bad --waiver-helper: ${seen.argv}`);
+  assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
+    `must default to the releases registry: ${seen.argv}`);
+  assert(seen.argv.includes("@jfrog/agent-guard"),
+    `unpinned package spec expected when no version override is set: ${seen.argv}`);
 });
 
-await check("forwards agent-guard stdout verbatim and exits 0", async () => {
+await check("forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)", async () => {
   const deny = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"nope"}}`;
-  stubAgentGuard({ stdout: deny });
-  const r = runWrapper("{}");
-  assert(r.code === 0, `exit=${r.code}`);
+  stubNpx({ stdout: deny });
+  const r = runHookCommand(commandFor("PreToolUse"), "{}");
+  assert(r.code === 0, `a rendered verdict must exit 0 and let the JSON decide, got exit=${r.code}`);
   assert(r.stdout === deny, `stdout altered: ${r.stdout}`);
 });
 
-await check("empty agent-guard stdout means allow (no output, exit 0)", async () => {
-  stubAgentGuard({ stdout: "" });
-  const r = runWrapper("{}");
+await check("empty stdout means allow (no output, exit 0)", async () => {
+  stubNpx({ stdout: "" });
+  const r = runHookCommand(commandFor("PreToolUse"), "{}");
   assert(r.code === 0 && r.stdout === "", `exit=${r.code} stdout=${r.stdout}`);
 });
 
 await check("agent-guard failure yields exit exactly 2 (fail closed)", async () => {
-  stubAgentGuard({ stdout: "", exitCode: 1 });
-  const r = runWrapper("{}");
-  assert(r.code === 2, `expected the wrapper's fail-closed exit 2, got exit=${r.code}`);
+  stubNpx({ stdout: "", exitCode: 1 });
+  const r = runHookCommand(commandFor("PreToolUse"), "{}");
+  assert(r.code === 2, `expected the fail-closed exit 2, got exit=${r.code}`);
 });
 
-await check("no agent-guard on PATH and an unreachable registry still fails closed (exit 2)", async () => {
-  rmSync(path.join(binDir, "agent-guard"), { force: true });
-  const r = runWrapper("{}", {
-    JFROG_AGENT_GUARD_REPO: "http://127.0.0.1:1/",
-    npm_config_offline: "true",
+// The case that justifies `|| exit 2` over an exit code inside agent-guard: with npx absent,
+// agent-guard never runs, so only the hook itself can turn 127 into a block.
+await check("npx missing entirely still fails closed (exit 2, not 127)", async () => {
+  const r = runHookCommand(commandFor("PreToolUse"), "{}", { isolate: true });
+  assert(r.code === 2, `a missing npx must fail closed with exit 2, got exit=${r.code}`);
+});
+
+await check("JFROG_AGENT_GUARD_REPO redirects the registry, JFROG_AGENT_GUARD_VERSION pins the version", async () => {
+  const record = stubNpx({ stdout: "" });
+  const r = runHookCommand(commandFor("PreToolUse"), "{}", {
+    extraEnv: {
+      JFROG_AGENT_GUARD_REPO: "https://example.invalid/npm/dev/",
+      JFROG_AGENT_GUARD_VERSION: "0.0.0-master.1.gabc",
+    },
   });
-  assert(r.code === 2, `an unreachable agent-guard must fail closed with exit 2, got exit=${r.code}`);
+  assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
+  const seen = JSON.parse(readFileSync(record, "utf8"));
+  assert(seen.argv[seen.argv.indexOf("--registry") + 1] === "https://example.invalid/npm/dev/",
+    `registry override ignored: ${seen.argv}`);
+  assert(seen.argv.includes("@jfrog/agent-guard@0.0.0-master.1.gabc"),
+    `version override not appended to the package spec: ${seen.argv}`);
+});
+
+await check("an unset version override leaves the spec unpinned rather than adding a bare @", async () => {
+  const record = stubNpx({ stdout: "" });
+  runHookCommand(commandFor("PreToolUse"), "{}", { extraEnv: { JFROG_AGENT_GUARD_VERSION: "" } });
+  const seen = JSON.parse(readFileSync(record, "utf8"));
+  assert(seen.argv.includes("@jfrog/agent-guard"),
+    `an empty version must not produce "@jfrog/agent-guard@": ${seen.argv}`);
 });
 
 rmSync(sandbox, { recursive: true, force: true });

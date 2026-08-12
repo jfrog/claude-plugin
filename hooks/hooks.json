@@ -8,6 +8,14 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/modules/claude-session-start.mjs\" package-resolution",
             "timeout": 7,
             "statusMessage": "Routing package installs through JFrog Artifactory…"
+          },
+          {
+            "type": "command",
+            "shell": "bash",
+            "async": true,
+            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" \"@jfrog/agent-guard${JFROG_AGENT_GUARD_VERSION:+@${JFROG_AGENT_GUARD_VERSION}}\" --version >/dev/null 2>&1 || true",
+            "timeout": 180,
+            "statusMessage": "Warming the JFrog Agent Guard cache…"
           }
         ]
       }
@@ -18,8 +26,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/enforce-skill.mjs"],
+            "shell": "bash",
+            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" \"@jfrog/agent-guard${JFROG_AGENT_GUARD_VERSION:+@${JFROG_AGENT_GUARD_VERSION}}\" --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
             "timeout": 20
           }
         ]
@@ -30,8 +38,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/enforce-skill.mjs"],
+            "shell": "bash",
+            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" \"@jfrog/agent-guard${JFROG_AGENT_GUARD_VERSION:+@${JFROG_AGENT_GUARD_VERSION}}\" --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
             "timeout": 20
           }
         ]

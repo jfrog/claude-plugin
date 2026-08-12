@@ -24,6 +24,7 @@ Before installing, make sure you have:
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
 - **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard).
+- **Git Bash on Windows** — required for the Skill Governance hook, which runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook reports a `requires bash` error on every skill invocation. Not needed on macOS or Linux.
 - **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve credentials/server ID from the JFrog CLI instead of `JFROG_URL`/`JFROG_ACCESS_TOKEN` env vars. Older CLIs don't support the `--format` flag used by `jf config show` for this.
