@@ -10,16 +10,22 @@ import {
   DEFAULT_ALIGN_TIMEOUT_MS,
   DISABLE_ENV,
   MODES,
+  PLUGIN_SOURCE_TAG,
+  SOURCE_TAG_FLAG,
+  addPluginSourceTag,
   buildNpxArgs,
   buildNpxSpawnOptions,
   buildSessionStartWatchPayload,
   isAlignDisabled,
   killAlignChildTree,
+  listInstalledPluginMcpJsonPaths,
+  patchPluginMcpJsonSourceTag,
   resolveAgentGuardNpmRegistry,
   resolveNpxCommand,
   resolvePluginsDir,
   runAgentGuardAlign,
   runAlignHook,
+  tagPluginMcpJsonFiles,
 } from "./claude-align-plugin-mcps.mjs";
 import { runRegisterWatchPaths } from "./claude-register-align-watch-paths.mjs";
 
@@ -516,4 +522,153 @@ test("runRegisterWatchPaths respects kill switch", async () => {
   });
   assert.equal(code, 0);
   assert.equal(written, "");
+});
+
+// --- Plugin --source tagging (POC) ---------------------------------------
+
+function agentGuardEntry(extraArgs = []) {
+  return {
+    type: "stdio",
+    command: "npx",
+    args: [
+      "--yes",
+      "--registry",
+      DEFAULT_AGENT_GUARD_NPM_REGISTRY,
+      AGENT_GUARD_PACKAGE,
+      "--server",
+      "jfrogmldev",
+      ...extraArgs,
+    ],
+    env: { _JF_ARGS: "project=demo&mcp=internal-search" },
+  };
+}
+
+/** In-memory readFileFn/writeFileFn pair for patch/discovery tests. */
+function fakeFs(initialFiles = {}) {
+  const files = new Map(Object.entries(initialFiles));
+  const written = new Map();
+  return {
+    files,
+    written,
+    readFileFn: async (p) => {
+      if (!files.has(p)) {
+        const err = new Error(`ENOENT: ${p}`);
+        err.code = "ENOENT";
+        throw err;
+      }
+      return files.get(p);
+    },
+    writeFileFn: async (p, contents) => {
+      files.set(p, contents);
+      written.set(p, contents);
+    },
+  };
+}
+
+test("addPluginSourceTag tags an untagged Agent Guard stdio entry", () => {
+  const server = agentGuardEntry();
+  assert.equal(addPluginSourceTag(server), true);
+  assert.deepEqual(server.args.slice(-2), [SOURCE_TAG_FLAG, PLUGIN_SOURCE_TAG]);
+});
+
+test("addPluginSourceTag is idempotent on an already-tagged entry", () => {
+  const server = agentGuardEntry([SOURCE_TAG_FLAG, PLUGIN_SOURCE_TAG]);
+  const before = [...server.args];
+  assert.equal(addPluginSourceTag(server), false);
+  assert.deepEqual(server.args, before);
+});
+
+test("addPluginSourceTag ignores non-Agent-Guard and remote entries", () => {
+  assert.equal(addPluginSourceTag({ command: "node", args: ["server.js"] }), false);
+  assert.equal(addPluginSourceTag({ type: "http", url: "https://example.com/mcp" }), false);
+  assert.equal(addPluginSourceTag(null), false);
+});
+
+test("patchPluginMcpJsonSourceTag tags untagged entries and writes the file back", async () => {
+  const fs = fakeFs({
+    "/plugin/.mcp.json": JSON.stringify({
+      mcpServers: { "internal-search": agentGuardEntry() },
+    }),
+  });
+  const changed = await patchPluginMcpJsonSourceTag("/plugin/.mcp.json", fs);
+  assert.equal(changed, true);
+  const rewritten = JSON.parse(fs.written.get("/plugin/.mcp.json"));
+  assert.deepEqual(
+    rewritten.mcpServers["internal-search"].args.slice(-2),
+    [SOURCE_TAG_FLAG, PLUGIN_SOURCE_TAG],
+  );
+});
+
+test("patchPluginMcpJsonSourceTag does not rewrite an already-tagged file", async () => {
+  const fs = fakeFs({
+    "/plugin/.mcp.json": JSON.stringify({
+      mcpServers: {
+        "internal-search": agentGuardEntry([SOURCE_TAG_FLAG, PLUGIN_SOURCE_TAG]),
+      },
+    }),
+  });
+  const changed = await patchPluginMcpJsonSourceTag("/plugin/.mcp.json", fs);
+  assert.equal(changed, false);
+  assert.equal(fs.written.size, 0);
+});
+
+test("patchPluginMcpJsonSourceTag leaves a remote-only mcp.json untouched", async () => {
+  const fs = fakeFs({
+    "/plugin/.mcp.json": JSON.stringify({
+      mcpServers: { jfrog: { type: "http", url: "https://example.jfrog.io/mcp" } },
+    }),
+  });
+  assert.equal(await patchPluginMcpJsonSourceTag("/plugin/.mcp.json", fs), false);
+  assert.equal(fs.written.size, 0);
+});
+
+test("patchPluginMcpJsonSourceTag returns false for a missing file", async () => {
+  const fs = fakeFs({});
+  assert.equal(await patchPluginMcpJsonSourceTag("/missing/.mcp.json", fs), false);
+});
+
+test("patchPluginMcpJsonSourceTag returns false for unparsable JSON", async () => {
+  const fs = fakeFs({ "/plugin/.mcp.json": "{ not json" });
+  assert.equal(await patchPluginMcpJsonSourceTag("/plugin/.mcp.json", fs), false);
+});
+
+test("listInstalledPluginMcpJsonPaths reads installPath entries from installed_plugins.json", async () => {
+  const installedPath = path.join("/cfg", "plugins", "installed_plugins.json");
+  const fs = fakeFs({
+    [installedPath]: JSON.stringify({
+      version: 2,
+      plugins: {
+        "jfrog@jfrog-plugin": [{ scope: "user", installPath: "/cache/jfrog-plugin/jfrog/0.2.19" }],
+      },
+    }),
+  });
+  const paths = await listInstalledPluginMcpJsonPaths({ CLAUDE_CONFIG_DIR: "/cfg" }, fs);
+  assert.deepEqual(paths, [path.join("/cache/jfrog-plugin/jfrog/0.2.19", ".mcp.json")]);
+});
+
+test("listInstalledPluginMcpJsonPaths returns [] when installed_plugins.json is missing", async () => {
+  const fs = fakeFs({});
+  assert.deepEqual(
+    await listInstalledPluginMcpJsonPaths({ CLAUDE_CONFIG_DIR: "/cfg" }, fs),
+    [],
+  );
+});
+
+test("tagPluginMcpJsonFiles tags every discovered plugin mcp.json and reports errors per file", async () => {
+  const installedPath = path.join("/cfg", "plugins", "installed_plugins.json");
+  const goodMcpPath = path.join("/cache/good/0.0.1", ".mcp.json");
+  const badMcpPath = path.join("/cache/bad/0.0.1", ".mcp.json");
+  const fs = fakeFs({
+    [installedPath]: JSON.stringify({
+      plugins: {
+        "good@mp": [{ installPath: "/cache/good/0.0.1" }],
+        "bad@mp": [{ installPath: "/cache/bad/0.0.1" }],
+      },
+    }),
+    [goodMcpPath]: JSON.stringify({ mcpServers: { tool: agentGuardEntry() } }),
+    [badMcpPath]: "{ not json",
+  });
+  const { patched, errors } = await tagPluginMcpJsonFiles({ CLAUDE_CONFIG_DIR: "/cfg" }, fs);
+  assert.deepEqual(patched, [goodMcpPath]);
+  assert.deepEqual(errors, []); // unparsable files are skipped, not errored
 });

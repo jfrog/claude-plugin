@@ -22,6 +22,7 @@
 // Kill switch: JF_AGENT_ALIGN_PLUGIN_MCPS_DISABLE=1 → no-op (exit 0, no stdout).
 
 import { spawn } from "node:child_process";
+import { readFile, writeFile, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -127,6 +128,174 @@ export function buildSessionStartWatchPayload(env = process.env) {
       ],
     },
   });
+}
+
+// --- Plugin --source tagging (POC) --------------------------------------
+//
+// Claude Code's plugin-vs-scope MCP dedup compares command+args only, never
+// env (anthropics/claude-code#85862): a plugin-provided Agent Guard MCP is
+// silently dropped whenever a user/project-scope entry resolves to the exact
+// same command+args, even though `env._JF_ARGS` (the actual per-MCP
+// identity) differs. Since the two entries only ever collide across that
+// plugin-vs-other-scope boundary — never plugin-vs-plugin, never within one
+// scope (confirmed by testing against a live Claude Code install) — tagging
+// every plugin-provided Agent Guard entry with a constant, harmless
+// `--source plugin` marker is enough to make the two arrays unequal and stop
+// Claude Code from ever treating them as duplicates. @jfrog/agent-guard's
+// loader ignores any argument other than `--server` (verified by running the
+// binary directly), so the marker has no effect on what actually starts.
+//
+// This lives here rather than in @jfrog/agent-guard's own rewrite because
+// align-plugin-mcps has not shipped yet: nothing in the field depends on
+// today's untagged shape, so it can launch already tagged. The generic
+// `--rewrite-mcp-json` path (used by the already-shipped "add an MCP via
+// chat" skill flow) is untouched — this only ever patches plugin-scope
+// .mcp.json files.
+//
+// POC scope: this only patches the installed_plugins.json cache-mirror path.
+// It does not resolve the live marketplace-tree copy Claude may load instead
+// (see anthropics/claude-code#39156) — production coverage of both paths
+// belongs in @jfrog/agent-guard's own --align-plugin-mcps, same as today.
+
+export const SOURCE_TAG_FLAG = "--source";
+export const PLUGIN_SOURCE_TAG = "plugin";
+
+/** True when a stdio server entry launches through @jfrog/agent-guard. */
+function isAgentGuardServer(server) {
+  return (
+    !!server &&
+    server.command === "npx" &&
+    Array.isArray(server.args) &&
+    server.args.includes(AGENT_GUARD_PACKAGE)
+  );
+}
+
+/**
+ * Appends `--source plugin` to an Agent Guard stdio entry's args, in place.
+ * No-op for non-Agent-Guard entries or ones already carrying a --source flag.
+ * @param {any} server
+ * @returns {boolean} true when the entry was changed
+ */
+export function addPluginSourceTag(server) {
+  if (!isAgentGuardServer(server)) return false;
+  if (server.args.includes(SOURCE_TAG_FLAG)) return false;
+  server.args = [...server.args, SOURCE_TAG_FLAG, PLUGIN_SOURCE_TAG];
+  return true;
+}
+
+async function writeMcpJsonFileAtomic(mcpPath, contents) {
+  const tmpPath = `${mcpPath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmpPath, contents, "utf8");
+  await rename(tmpPath, mcpPath);
+}
+
+/**
+ * Reads one plugin .mcp.json and tags any untagged Agent Guard stdio entry.
+ * Missing, unparsable, or already-tagged files are left alone.
+ * @param {string} mcpPath
+ * @param {{
+ *   readFileFn?: (p: string) => Promise<string>,
+ *   writeFileFn?: (p: string, s: string) => Promise<void>,
+ * }} [deps]
+ * @returns {Promise<boolean>} true when the file was rewritten
+ */
+export async function patchPluginMcpJsonSourceTag(mcpPath, deps = {}) {
+  const readFileFn = deps.readFileFn ?? ((p) => readFile(p, "utf8"));
+  const writeFileFn = deps.writeFileFn ?? writeMcpJsonFileAtomic;
+
+  let raw;
+  try {
+    raw = await readFileFn(mcpPath);
+  } catch (err) {
+    if (err?.code === "ENOENT") return false;
+    throw err;
+  }
+
+  let root;
+  try {
+    root = JSON.parse(raw);
+  } catch {
+    return false; // leave unparsable files alone
+  }
+
+  const servers = root?.mcpServers;
+  if (!servers || typeof servers !== "object") return false;
+
+  let changed = false;
+  for (const server of Object.values(servers)) {
+    if (addPluginSourceTag(server)) changed = true;
+  }
+  if (!changed) return false;
+
+  await writeFileFn(mcpPath, `${JSON.stringify(root, null, 2)}\n`);
+  return true;
+}
+
+/**
+ * Cache-mirror .mcp.json paths for every installed plugin, from
+ * installed_plugins.json. See the POC-scope note above.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ readFileFn?: (p: string) => Promise<string> }} [deps]
+ * @returns {Promise<string[]>}
+ */
+export async function listInstalledPluginMcpJsonPaths(env = process.env, deps = {}) {
+  const readFileFn = deps.readFileFn ?? ((p) => readFile(p, "utf8"));
+  const installedPath = path.join(resolvePluginsDir(env), "installed_plugins.json");
+
+  let raw;
+  try {
+    raw = await readFileFn(installedPath);
+  } catch (err) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
+
+  let root;
+  try {
+    root = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+
+  const paths = new Set();
+  for (const installs of Object.values(root?.plugins ?? {})) {
+    if (!Array.isArray(installs)) continue;
+    for (const install of installs) {
+      const installPath = install?.installPath?.trim?.();
+      if (installPath) paths.add(path.join(installPath, ".mcp.json"));
+    }
+  }
+  return [...paths];
+}
+
+/**
+ * Tags every installed plugin's Agent Guard stdio entries with `--source
+ * plugin`. Per-file failures are collected rather than thrown, matching this
+ * hook's soft-fail policy.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ readFileFn?, writeFileFn? }} [deps]
+ * @returns {Promise<{ patched: string[], errors: string[] }>}
+ */
+export async function tagPluginMcpJsonFiles(env = process.env, deps = {}) {
+  const patched = [];
+  const errors = [];
+  let mcpPaths;
+  try {
+    mcpPaths = await listInstalledPluginMcpJsonPaths(env, deps);
+  } catch (err) {
+    errors.push(err?.message ?? String(err));
+    return { patched, errors };
+  }
+  for (const mcpPath of mcpPaths) {
+    try {
+      if (await patchPluginMcpJsonSourceTag(mcpPath, deps)) {
+        patched.push(mcpPath);
+      }
+    } catch (err) {
+      errors.push(`${mcpPath}: ${err?.message ?? String(err)}`);
+    }
+  }
+  return { patched, errors };
 }
 
 /**
@@ -306,6 +475,11 @@ export async function runAlignHook(modeArg, deps = {}) {
   });
   const durMs = Date.now() - startedAtMs;
 
+  // Runs regardless of agent-guard's own outcome: a plugin .mcp.json may
+  // already carry an untagged Agent Guard entry from an earlier session even
+  // when this run's align call failed or no-op'd.
+  await tagPluginSourceIfEnabled(env, deps);
+
   if (result.code !== 0) {
     log.error("align-plugin-mcps failed", {
       format,
@@ -331,6 +505,28 @@ export async function runAlignHook(modeArg, deps = {}) {
     durMs,
   });
   return 0;
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @param {{ readFileFn?, writeFileFn? }} [deps]
+ */
+async function tagPluginSourceIfEnabled(env, deps = {}) {
+  try {
+    const { patched, errors } = await tagPluginMcpJsonFiles(env, deps);
+    if (patched.length) {
+      log.info("tagged plugin Agent Guard MCP entries with --source plugin", {
+        files: patched,
+      });
+    }
+    if (errors.length) {
+      log.warn("plugin --source tagging had errors", { errors });
+    }
+  } catch (err) {
+    log.warn("plugin --source tagging failed", {
+      error: err?.message ?? String(err),
+    });
+  }
 }
 
 async function main() {
