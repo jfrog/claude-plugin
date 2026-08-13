@@ -83,6 +83,28 @@ Agent Package Resolution is in preview and opt-in. To get started:
 - **Users:** see the [User Guide](docs/package-resolution-user-guide.md).
 - **Admins:** see the [Admin Guide](docs/package-resolution-admin-guide.md).
 
+### Confirming it is installed
+
+Agent Package Resolution runs from a `SessionStart` hook, so there are two things worth knowing before you go looking for it:
+
+- **Restart Claude Code after installing the plugin.** Hooks are registered when Claude Code starts, so a session that was already open when you installed will not run it.
+- **The hook is not written into your own configuration.** It stays inside the plugin (`hooks/hooks.json`) and is merged at runtime, so it does not appear in `~/.claude/settings.json` or `~/.claude/hooks/` — finding nothing there does not mean the install failed.
+
+To confirm it is running, start a new session and check the hook log:
+
+```bash
+tail ~/.jfrog/logs/agent-hooks.log
+```
+
+You should see one entry per session naming the mode it resolved to:
+
+| Mode | Meaning |
+| --- | --- |
+| `off` | Not enabled yet — expected until an admin or you turn it on (see the guides above) |
+| `pending` | Enabled, but JFrog identity is missing, unusable, or rejected — nothing is routed yet |
+| `routing` | Enabled and configured — packages resolve through Artifactory |
+
+For more detail, set `"logLevel": "debug"` in `~/.jfrog/agents-conf.json` and start another session.
 ---
 
 ## Usage
