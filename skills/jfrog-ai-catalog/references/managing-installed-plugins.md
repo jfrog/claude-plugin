@@ -49,30 +49,34 @@ harness-native CLI first, fall back to deleting the local files if unavailable.
 ### Step 1: try harness-native uninstall
 
 Some harnesses register plugins in their own registry — deleting files alone leaves
-a dangling entry. Before falling back to step 2, map the `--harness` value to the
-actual CLI binary, then probe whether it exposes a native plugin CLI:
+a dangling entry. Before falling back to step 2, probe whether the harness exposes
+a native plugin CLI:
 
-| `--harness` value | CLI binary |
-|-------------------|------------|
-| `claude-code` | `claude` |
-| `cursor` | `cursor` |
-| any other | same as harness value |
+The `--harness` value is the CLI binary name directly (e.g. `claude`, `cursor`).
 
 ```bash
-<binary> plugin --help 2>/dev/null || <binary> plugins --help 2>/dev/null
+<harness> plugin --help 2>/dev/null || <harness> plugins --help 2>/dev/null
 ```
 
 If a plugin management CLI is found, use it to look up and uninstall the slug. If
 not (command not found or exits non-zero with no useful output), skip to step 2.
 
-**claude-code** (`claude` binary) is the currently known example. It tracks plugins with ID
-`<slug>@<repo>`:
+**claude** is the currently known example. It tracks plugins with ID
+`<slug>@<repo>`. A slug can be installed from more than one repo at once, so
+the lookup can return more than one ID — never pass a multi-line result
+straight into one uninstall call.
 
 ```bash
-# Look up the registered ID in claude's registry
-ID=$(claude plugin list --json 2>/dev/null \
+# Look up the registered ID(s) in claude's registry
+IDS=$(claude plugin list --json 2>/dev/null \
   | jq -r '.[] | select(.id | startswith("<slug>@")) | .id')
+```
 
+- **One match.** Use it directly.
+- **More than one match.** List them and ask the user which repo's copy to
+  remove before uninstalling — do not guess or loop over all of them.
+
+```bash
 # Uninstall (-y required: no TTY in agent context)
 claude plugin uninstall "$ID" --prune -y
 ```

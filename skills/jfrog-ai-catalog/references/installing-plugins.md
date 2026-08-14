@@ -3,23 +3,6 @@
 Install and update both download from the registry, so they share the same
 `--repo`/`--quiet` rules and verify-landed check.
 
-**Prerequisite — entitlement check (reuses the MCP gate).** Before the first
-download (`jf agent plugins install` / `update`), run the shared Agent Guard
-activation check and WAIT for its exit code — do not narrate that you are
-running it. Pass the resolved `<SID>` when known:
-
-```bash
-node "../../jfrog-mcp-management/scripts/jfrog-agent-guard-check.mjs" "<SID>"
-```
-
-Interpret the exit code per
-[`../../jfrog-mcp-management/references/agent-guard-activation.md`](../../jfrog-mcp-management/references/agent-guard-activation.md),
-reading "MCP registry" as the AI Catalog / Agent Guard entitlement: proceed only
-on Exit 0; on Exit 2 tell the user the AI Catalog is disabled on their platform
-and to contact their admin/IT, then stop; on any other non-zero exit, abort the
-install/update. This gate applies only to download flows — listing installed
-plugins and removing a plugin are local-only and never blocked.
-
 ## Contents
 
 - When evidence verification fails
@@ -30,7 +13,7 @@ Install by **slug** (the registry `slug`/`name`, never a display name). Latest
 version is used by default, and the user may pass an explicit version.
 **The `jf agent plugins install` command takes no project.** Resolving which repo hosts
 the slug uses `--list-agent-plugin-versions` (below), which does require `--project`, so
-resolve it (from `JF_PROJECT`, else ask the user) before that lookup.
+use `<PROJECT>` resolved at session start (see SKILL.md Prerequisites).
 
 ```bash
 jf agent plugins install "<slug>" \
@@ -49,27 +32,21 @@ every choice (`--repo`, target) up front.
 
 **Resolve `<harness>` from the environment check script — never from your model
 name.** If `<UA>` is not already known from this session, run
-`bash <skill_path>/scripts/check-environment.sh <model-slug>` now and capture
-its stdout as `<UA>`. Parse the `tool=<h>` field from `<UA>` and map it to a
-`jf` harness name:
+`bash <skill_path>/../jfrog/scripts/check-environment.sh <model-slug>` now and capture
+its stdout as `<UA>`. Parse the `tool=<h>` field from `<UA>` and pass it straight
+through as `--harness <h>`.
 
-| `tool=` value in `<UA>` | `--harness` for `jf agent plugins` |
-|-------------------------|------------------------------------|
-| `claude` | `claude-code` |
-| `cursor` | `cursor` |
-| `unknown`, empty, or any other | Ask the user |
+If `tool` is `unknown` or empty, do **not** guess — ask the user for the
+desired install path and use `--path <dir>` instead.
 
-If `tool` is `unknown`, empty, or not in the table — do **not** guess. Ask
-the user for the desired install path and use `--path <dir>` instead. VS Code
-and similar hosts that lack a recognised `tool=` value are not in the supported
-agents table for plugins; passing a guessed harness will cause the CLI to error
-with `unknown agent`.
+If the CLI rejects the harness with `unknown agent`, fall back to asking the
+user for `--path <dir>`, the same as the unknown/empty case above.
 
 Choose exactly one install target (these are mutually exclusive):
 
 | Flag | Installs into |
 |------|---------------|
-| `--harness <name>` | The current agent's resolved plugins dir (resolve per above, e.g. `cursor`, `claude-code`). |
+| `--harness <name>` | The current agent's resolved plugins dir (resolve per above, e.g. `cursor`, `claude`). |
 | `--global` | Each agent's global directory from config. |
 | `--project-dir <dir>` | Project root combined with the agent's project path. |
 | `--path <dir>` | Direct: files go under `<dir>/<slug>`. |
@@ -107,18 +84,22 @@ This is a security control. **Do not silently bypass it.** Stop and ask using
 > Installing it skips that security check. Do you want to install it anyway?
 
 Only if the user explicitly agrees, re-run with
-`JFROG_SKILLS_DISABLE_QUIET_FAILURE=true`. Never set that flag on your own.
+`JFROG_AGENT_PLUGINS_DISABLE_QUIET_FAILURE=true`. Never set that flag on your own.
 
 ## Verify the install landed
 
-After install, confirm the `plugin.json` exists at the resolved install location
-before reporting success:
+After install, confirm the slug shows up as installed — don't guess where
+`plugin.json` lives inside the bundle (layout isn't guaranteed, see
+*Validate the bundle* in `publishing-plugins.md`). `jf agent plugins list` is
+the source of truth for what's actually installed:
 
 ```bash
-test -f "<install-dir>/<repo-key>/<slug>/plugin.json" && echo "installed" || echo "MISSING plugin.json"
+jf agent plugins list --server-id "<SID>" --harness "<harness>" --format json \
+  | jq -e --arg slug "<slug>" '.[] | select(.name == $slug)' >/dev/null \
+  && echo "installed" || echo "MISSING from installed list"
 ```
 
-If the file is missing, report the failure. Do not claim success.
+If the slug is missing, report the failure. Do not claim success.
 
 On success, reply using **this exact template**:
 

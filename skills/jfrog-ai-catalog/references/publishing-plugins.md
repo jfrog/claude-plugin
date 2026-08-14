@@ -70,20 +70,14 @@ jf api '/artifactory/api/repositories?packageType=plugins&type=local' \
 
 ## Validate the bundle
 
-The publish argument is the **path to the folder containing `plugin.json`** (not
-the `plugin.json` file itself). Before publishing:
+`jf agent plugins publish "<path>"` resolves and validates `plugin.json` itself
+— don't reimplement that check (e.g. requiring `plugin.json` at `<path>`'s root)
+since that may not match what the CLI actually accepts. Let the CLI be the
+source of truth for what counts as a valid bundle; use the last path segment of
+`<path>` as a best-effort `<slug>` label for the confirmation prompt below.
 
-```bash
-test -f "<path>/plugin.json" || echo "No plugin.json at <path>, not a plugin bundle"
-```
-
-Parse `plugin.json` and confirm it contains at least a `name` field with a
-non-empty value. If the bundle is missing `plugin.json` or the required fields are
-absent or malformed, do not publish and reply using **this exact template** (no
-extra prose), filling `<problem>` with the specific issue found:
-
-  > `<path>` is not a publishable plugin bundle: `<problem>`. Point me at the
-  > folder that contains `plugin.json` and I'll retry.
+If publish fails because the bundle is invalid, don't guess the reason — report
+the CLI's own error (see *Report the publish result*).
 
 ## Sign the plugin (evidence)
 

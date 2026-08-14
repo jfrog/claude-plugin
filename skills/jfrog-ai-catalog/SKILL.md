@@ -1,18 +1,15 @@
 ---
 name: jfrog-ai-catalog
 description: >-
-  Discover, install, manage, and publish agent skills and agent plugins hosted
-  in the JFrog AI Catalog (Artifactory skills and plugins repositories) using
-  the JFrog CLI (`jf skills`, `jf agent plugins`) and the JFrog Agent Guard.
-  Lists and searches available skills and plugins (catalog-wide or scoped to a
-  project), shows versions and which repos host them, installs the latest or a
-  pinned version, verifies the install, lists installed skills and plugins,
-  updates and removes them, and publishes a local skill or plugin bundle and
-  releases new versions. Use when the user asks what skills or plugins are
-  available or installed, to search/browse the catalog, to
-  install/update/uninstall/delete a skill or plugin, to see versions, or to
-  publish/upload/release a skill or plugin to JFrog / Artifactory / the AI
-  Catalog.
+  Discover, search, install, update, remove, and publish agent skills and
+  plugins hosted in the JFrog AI Catalog (Artifactory) via the JFrog CLI
+  (`jf skills`, `jf agent plugins`) and JFrog Agent Guard. Use whenever the
+  user asks what skills or plugins are available or installed, wants to
+  browse/search the catalog, see versions, install/update/uninstall/delete a
+  skill or plugin, or publish/upload/release one to JFrog / Artifactory / the
+  AI Catalog.
+  NOT for managing MCP servers (use jfrog-mcp-management) or downloading
+  packages/artifacts (use jfrog-package-safety-and-download).
 metadata:
   role: workflow
 ---
@@ -72,7 +69,16 @@ Pick the row matching the user's intent and read that reference file.
   It is required for `--list-skills`, `--list-skill-versions`,
   `--provision-skills-repository`, `--list-agent-plugins`,
   `--list-agent-plugin-versions`, and `--provision-agent-plugins-repository`.
-  Take it from `JF_PROJECT` or the user.
+  Resolve it with this priority:
+  1. Parse `~/.jfrog/setup.json` (if present) and read `.servers["<SID>"].currentActiveProject`.
+  2. Fall back to `$JF_PROJECT`.
+  3. If still empty, ask the user for the project key - do **not** guess.
+
+  ```bash
+  PROJECT=$(jq -r --arg sid "<SID>" '.servers[$sid].currentActiveProject // empty' \
+    ~/.jfrog/setup.json 2>/dev/null)
+  [ -z "$PROJECT" ] && PROJECT="${JF_PROJECT:-}"
+  ```
   There is no non-admin way to look up or validate project keys (the
   `/access/api/v1/projects` list endpoint needs admin), so you cannot
   silently correct a display name to a key. If the value looks like a

@@ -87,7 +87,7 @@ prose), filling `<problem>` with the specific issue found:
 
 ## Sign the skill (evidence)
 
-Signing attaches a cryptographic attestation so the skill **installs without a
+Signing attaches a cryptographic attestation so the skill **installs without an
 evidence-verification warning** (see *When evidence verification fails* in
 `installing-skills.md`). It is **opt-in**. Never generate keys or sign silently,
 and never echo, print, or hardcode the key path or its contents.
