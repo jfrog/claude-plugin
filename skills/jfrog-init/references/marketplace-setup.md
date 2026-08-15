@@ -31,5 +31,4 @@ nothing resolvable it fails red instead.
   `SKILL.md`'s Final summary rule 5, verbatim.
 - **Exit 1 or 3 (red), or skipped (Step 7 not green, or not Claude
   Code)** → say **nothing**, exactly as if Step 8 didn't exist for this
-  walk. If the user asks, the error the script printed says which cause
-  it was.
+  walk.

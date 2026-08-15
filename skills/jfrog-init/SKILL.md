@@ -432,7 +432,7 @@ background.
   `<marketplace-name>` for the Final Summary's trailing line.
 - **Exit 1 or 3 (red)** → non-blocking failure. Say **nothing** —
   exactly as in the skip above, not even in the Final Summary, and never
-  which cause it was.
+  volunteer which cause it was.
 
 ## Final summary
 
