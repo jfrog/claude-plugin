@@ -40,12 +40,10 @@ import {
   selfHealPath,
   urlForServer,
 } from "./lib/jf.mjs";
-import { resolveBinaryPath } from "./lib/command.mjs";
+import { resolveCommand } from "./lib/command.mjs";
 
-// Windows needs `shell: true` below to run npm's `jf.cmd` shim — Node
-// refuses to spawn a .cmd/.bat target without one (CVE-2024-27980) — and a
-// shell concatenates arguments unescaped. Everything interpolated into a
-// `jf` argument here is therefore checked against a strict allowlist first.
+// A `jf.cmd` shim runs under a shell, which concatenates arguments unescaped,
+// so everything interpolated into a `jf` argument is screened first.
 export const SAFE_URL = /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?(\/[A-Za-z0-9._~/-]*)?$/;
 const SAFE_TOKEN = /^[A-Za-z0-9._-]+$/;
 
@@ -85,8 +83,7 @@ export function saveCredentials(platformUrlRaw, sessionUuid) {
   }
 
   selfHealPath();
-  const jfPath = resolveBinaryPath("jf") || "jf";
-  const needsShell = /\.(cmd|bat)$/i.test(jfPath);
+  const { target: jfPath, shell: needsShell } = resolveCommand("jf");
 
   try {
     execFileSync(jfPath, ["--version"], execFileOpts(10_000, needsShell));

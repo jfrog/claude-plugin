@@ -7,15 +7,23 @@ import { join } from "node:path";
 // curl checks HOME before the platform default.
 export const NETRC = join(process.env.HOME || homedir(), ".netrc");
 
+// Inside a macdef body, lines are just text until a blank one ends it.
+function nextMode(mode, keyword, value, host) {
+  if (mode === "macro") return keyword === "" ? "keep" : "macro";
+  if (keyword === "macdef") return "macro";
+  if (keyword === "machine") return value === host ? "drop" : "keep";
+  if (keyword === "default") return "keep";
+  return mode;
+}
+
 // Returns `content` with `host`'s entry removed and every other host untouched.
 export function dropNetrcHost(content, host) {
   const kept = [];
-  let skipping = false;
+  let mode = "keep";
   for (const line of content.split("\n")) {
-    const [keyword, value] = line.trim().split(/\s+/, 2);
-    if (keyword === "machine") skipping = value === host;
-    else if (keyword === "default") skipping = false;
-    if (!skipping) kept.push(line);
+    const [keyword, value] = line.trim().toLowerCase().split(/\s+/, 2);
+    mode = nextMode(mode, keyword, value, host);
+    if (mode !== "drop") kept.push(line);
   }
   return kept.join("\n");
 }

@@ -1,6 +1,6 @@
 ---
 name: jfrog-init
-description: JFrog plugin — make your setup ready.
+description: Set up and verify the JFrog plugin. Run on first install, to complete initial configuration, or to diagnose a broken setup.
 disable-model-invocation: true
 compatibility: >-
   Requires Node.js 18 or newer, and network access to the JFrog platform.

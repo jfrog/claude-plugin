@@ -45,7 +45,7 @@ function readServerCreds(serverId) {
 
   const token = cfg.accessToken || "";
   const login = cfg.user || (token ? tokenUsername(serverId) : "");
-  if (!token || !login) fail(`ERROR: missing access token or username for '${cfg.serverId || ""}'. Run 'jf login'.`);
+  if (!token || !login) fail(`ERROR: missing access token or username for '${serverId}'. Run 'jf login'.`);
 
   return { jpd, login, token };
 }
@@ -54,6 +54,10 @@ function marketplaceUrl({ jpd, login, token }, prefix) {
   const userinfo = `${encodeURIComponent(login)}:${encodeURIComponent(token)}`;
   const base = `${jpd.host}${jpd.pathname.replace(/\/+$/, "")}`;
   return `${jpd.protocol}//${userinfo}@${base}${prefix}${MARKETPLACE_PATH}`;
+}
+
+function redactToken(text, token) {
+  return text.split(encodeURIComponent(token)).join("***");
 }
 
 function register(argServerId) {
@@ -65,16 +69,16 @@ function register(argServerId) {
   const wrote = writeNetrc(creds.jpd.hostname, creds.login, creds.token);
   if (!wrote.ok) fail(`ERROR: ${wrote.error}`);
 
-  let lastFailure = "";
+  const failures = [];
   for (const prefix of MARKETPLACE_PREFIXES) {
     const { ok, out } = marketplaceAdd(marketplaceUrl(creds, prefix));
     if (ok) {
-      process.stdout.write(out);
+      process.stdout.write(redactToken(out, creds.token));
       return 0;
     }
-    lastFailure = out;
+    failures.push(out);
   }
-  process.stderr.write(lastFailure);
+  process.stderr.write(redactToken(failures.join(""), creds.token));
   return 1;
 }
 
