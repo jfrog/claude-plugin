@@ -35,7 +35,7 @@ function moveCredentials(source, target) {
   if (source?.source !== "url" || !source.url) return false;
   const saved = new URL(source.url);
   if (saved.origin !== target.origin || saved.pathname !== target.pathname || !saved.password) return false;
-  source.headers = { Authorization: `Bearer ${decodeURIComponent(saved.password)}` };
+  source.headers = { ...source.headers, Authorization: `Bearer ${decodeURIComponent(saved.password)}` };
   source.url = withoutCredentials(source.url);
   return true;
 }

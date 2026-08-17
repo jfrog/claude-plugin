@@ -473,7 +473,7 @@ Skip Node.js (Step 1) — implementation detail, not user-facing.
 
 **Rules for the checklist:**
 1. Do **not** use the word "done" anywhere in it.
-2. Keep the five checks in exactly these three grouped lines — never
+2. Keep those checks in exactly these three grouped lines — never
    expand back out to five.
 3. All three groups fully resolved → use this exact format, verbatim:
 
