@@ -8,6 +8,31 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/modules/claude-session-start.mjs\" package-resolution",
             "timeout": 7,
             "statusMessage": "Routing package installs through JFrog Artifactory…"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-register-align-watch-paths.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Watching plugin MCP install metadata…"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" session-start",
+            "timeout": 45,
+            "statusMessage": "Aligning plugin MCPs with JFrog Agent Guard…"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "(installed_plugins|known_marketplaces)\\.json$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" file-changed",
+            "timeout": 45,
+            "statusMessage": "Re-aligning plugin MCPs…"
           }
         ]
       }

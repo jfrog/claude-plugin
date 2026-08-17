@@ -38,6 +38,10 @@ The `modules/` bundle is vendored from **jfrog-agent-hooks** (GHE) and committed
 
 The bundle contains harness runners (`core/`, `*-session-start.mjs`), the `package-resolution/` capability, and `assets/agents-default-conf.json`. Automated sync PRs (`chore/sync-modules-v*`) update this tree on each `jfrog-agent-hooks` release.
 
+Harness-specific scripts (for example `scripts/claude-align-mcp-json.mjs` and `claude-mcp-json-discover.mjs`) live **outside** `modules/` so sync does not wipe them. They call shared orchestration in synced `modules/core/` (for example `rewrite-mcp-json.mjs`).
+
+Until the next `jfrog-agent-hooks` release that includes MLD-1386, `modules/core/{rewrite-mcp-json,agent-guard-check,entry}.mjs` are vendored from that branch on top of the pinned `v0.8.1` tree. **Do not merge a modules sync PR that would delete these files** until MLD-1386 is in the pinned release (or re-vendor them in the same PR).
+
 ## Refreshing modules
 
 ```bash

@@ -22,3 +22,6 @@ jobs:
 
       - name: Validate plugin layout
         run: node scripts/validate-claude-plugin.mjs
+
+      - name: Run MCP rewrite hook unit tests
+        run: node --test scripts/claude-mcp-json-discover.test.mjs scripts/claude-align-mcp-json.test.mjs scripts/rewrite-mcp-json.test.mjs
