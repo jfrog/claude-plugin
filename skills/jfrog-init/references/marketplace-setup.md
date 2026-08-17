@@ -12,13 +12,12 @@ published to Artifactory become installable via `/plugin install`.
 
 ## The `~/.netrc` write
 
-The only place this skill itself puts a token on disk, so say so plainly
-if the user asks. The token goes to `~/.netrc`, replacing any prior block
-for that host. `claude plugin install` needs it because the marketplace
-lists each plugin as a plain Artifactory URL with no credentials in it.
-The marketplace fetch does not use the file, because the URL passed to
-`claude plugin marketplace add` carries the token and Claude Code saves
-that URL in its own plugin config.
+The only file this skill creates to hold a token, so say so plainly if the
+user asks. The token goes to `~/.netrc`, replacing any prior block for that
+host. `claude plugin install` needs it because the marketplace lists each
+plugin as a plain Artifactory URL with no credentials in it. The marketplace
+fetch does not use the file, because the token passed to `claude plugin
+marketplace add` reaches Claude Code's own plugin config.
 
 ## Server scope
 

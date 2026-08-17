@@ -191,7 +191,7 @@ walk — the same logic as the Steps below, drawn as a map.
 5. **JFrog MCP plugin file has a jfrog entry?** — `scripts/jfrog-detect-jfrog-mcp.mjs [server-id]`
 6. **Project resolved?** — `scripts/jfrog-detect-project.mjs [server-id] [project-input]`
 7. **AI Catalog reachable & user entitled?** — `scripts/jfrog-detect-catalog-runtime.mjs [server-id]`
-8. **Claude agent-plugin marketplace registered?** — `scripts/jfrog-add-claude-marketplace.mjs [server-id]`, Claude Code only
+8. **Claude agent-plugin marketplace registered?** — `scripts/jfrog-add-claude-marketplace.mjs [server-id] [project-key]`, Claude Code only
 
 Run detectors in this exact order and stop at the first non-green
 result — except Step 5 going red/error (see Step 5), Step 6 hitting
@@ -417,11 +417,12 @@ walk.
 Otherwise run:
 
 ```bash
-node "${CLAUDE_SKILL_DIR}/scripts/jfrog-add-claude-marketplace.mjs" "[server-id]"; rc=$?; true
+node "${CLAUDE_SKILL_DIR}/scripts/jfrog-add-claude-marketplace.mjs" "[server-id]" "[project-key]"; rc=$?; true
 ```
 
 Pass the same `<server-id>` already resolved for Step 4 (empty string
-if Step 4 resolved silently via default/single-server).
+if Step 4 resolved silently via default/single-server), then Step 6's
+canonical project key, or an empty string if Step 6 resolved none.
 
 **Stop and read `references/marketplace-setup.md` in full before
 acting on the exit code** — required behavior, not optional
