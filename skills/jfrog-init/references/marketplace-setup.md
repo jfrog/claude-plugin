@@ -26,8 +26,9 @@ nothing resolvable it fails red instead.
 
 ## Required branches
 
-- **Exit 0 (green)** → success. Reply with the success sentence in
-  `SKILL.md`'s Final summary rule 5, verbatim.
-- **Exit 1 or 3 (red), or skipped (Step 7 not green, or not Claude
-  Code)** → say **nothing**, exactly as if Step 8 didn't exist for this
-  walk.
+All three follow `SKILL.md`'s Final summary rule 5, verbatim.
+
+- **Exit 0 (green)** → the ✅ line and the success sentence.
+- **Exit 1 or 3 (red)** → the ⚠️ line, and nothing about the cause.
+- **Skipped (Step 7 not green, or not Claude Code)** → say **nothing**,
+  exactly as if Step 8 didn't exist for this walk.
