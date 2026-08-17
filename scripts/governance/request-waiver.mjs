@@ -20,6 +20,16 @@ const WAIVERS_PATH = "/ui/api/v1/unifiedpolicy/api/v1/waivers";
 const DEFAULT_EXPIRY_DAYS = 30;
 const TIMEOUT_MS = 10000;
 
+// The action type every skill-governance block is evaluated under. Unified Policy's
+// PolicyActionType has exactly one value today; new ones flow in server-side, so this stays a
+// constant here rather than becoming another flag the agent has to fill in correctly.
+const WAIVER_ACTION_TYPE = "certify_to_gate";
+
+// WaiverCreatePayload caps justification at 255 characters. The text is the user's own reason,
+// relayed by a model that may pad it, so truncate here: a waiver that records a clipped reason
+// is worth more to the user than an opaque HTTP 400.
+const MAX_JUSTIFICATION = 255;
+
 // Emit a single JSON result line on stdout and exit. ok:true is a success the agent
 // turns into a "Waiver requested" confirmation; ok:false is a failure to surface.
 function done(result, code) {
@@ -79,10 +89,25 @@ if (!credentials) {
 
 const expiresAt = expiresAtInDays(expiryDays);
 const url = credentials.baseUrl.replace(/\/+$/, "") + WAIVERS_PATH;
+// Unified Policy's Phase II waiver model (see its v012 migration, which backfilled the old
+// flat {application_key, stage_key, stage_gate} scope into this shape and archived the legacy
+// table): a mandatory `action` carrying the stage/gate, plus a `scopes` array discriminated on
+// `type`, of which exactly one `organization` entry is required. The stage moved out of the
+// scope and into the action — omitting `stage` there would waive ALL stages and gates, which is
+// far broader than the block the user is responding to.
 const payload = {
-  scopes: [{ application_key: applicationKey, stage_key: stageKey, stage_gate: stageGate }],
+  action: {
+    type: WAIVER_ACTION_TYPE,
+    stage: { key: stageKey, gate: stageGate },
+  },
+  scopes: [
+    {
+      type: "organization",
+      sub_scope: { type: "application", application_keys: [applicationKey] },
+    },
+  ],
   expires_at: expiresAt,
-  justification,
+  justification: String(justification).slice(0, MAX_JUSTIFICATION),
 };
 
 const controller = new AbortController();
