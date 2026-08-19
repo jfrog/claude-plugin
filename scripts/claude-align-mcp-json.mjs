@@ -26,7 +26,10 @@ import process from "node:process";
 import { isMainEntry } from "../modules/core/entry.mjs";
 import { detectHarness, parseSessionId, readStdin } from "../modules/core/io.mjs";
 import { createLogger, setLogContext } from "../modules/core/logger.mjs";
-import { runRewriteMcpJsonPipeline } from "../modules/core/rewrite-mcp-json.mjs";
+import {
+  OUTCOME,
+  runRewriteMcpJsonPipeline,
+} from "../modules/core/rewrite-mcp-json.mjs";
 import {
   discoverClaudePluginMcpJsonPaths,
   resolveRewriteAllowRoots,
@@ -35,8 +38,12 @@ import {
 const HARNESS_ID = "claude_code";
 const log = createLogger("align-mcp-json");
 
-/** Recommended Claude hooks.json timeout (seconds) for SessionStart + FileChanged. */
-export const RECOMMENDED_HOOK_TIMEOUT_SEC = 45;
+/** Recommended Claude hooks.json timeout (seconds) for SessionStart + FileChanged.
+ * Internal rewrite budget ≈ jf config export (2s) + gate fetch (5s) +
+ * DEFAULT_REWRITE_TIMEOUT_MS (35s) + DEFAULT_KILL_GRACE_MS (2s) ≈ 44s.
+ * 60s keeps ~16s of margin so Claude does not kill the hook first.
+ */
+export const RECOMMENDED_HOOK_TIMEOUT_SEC = 60;
 
 /**
  * Recommended FileChanged matcher for installed-plugin metadata. Dots are
@@ -50,7 +57,7 @@ export const RECOMMENDED_FILE_CHANGED_MATCHER =
 export const MODES = Object.freeze(new Set(["session-start", "file-changed"]));
 
 const RELOAD_HINT =
-  "JFrog Agent Guard rewrote one or more plugin MCP configs. Run /reload-plugins so Claude reconnects those MCPs.";
+  "MCP configs updated. Run /reload-plugins so Claude reconnects those MCPs.";
 
 /**
  * @param {string | undefined} modeArg
@@ -62,16 +69,15 @@ export function isKnownMode(modeArg) {
 
 /**
  * @param {string} modeArg
- * @param {number} rewritten
  * @returns {string}
  */
-export function buildReloadPluginsPayload(modeArg, rewritten) {
+export function buildReloadPluginsPayload(modeArg) {
   const hookEventName =
     modeArg === "file-changed" ? "FileChanged" : "SessionStart";
   return `${JSON.stringify({
     hookSpecificOutput: {
       hookEventName,
-      additionalContext: `${RELOAD_HINT} (${rewritten} file${rewritten === 1 ? "" : "s"} updated.)`,
+      additionalContext: RELOAD_HINT,
     },
   })}\n`;
 }
@@ -150,10 +156,8 @@ export async function runClaudeAlignMcpJson(modeArg, deps = {}) {
     readFileSyncFn: deps.readFileSyncFn,
   });
 
-  const rewritten =
-    typeof result?.rewritten === "number" ? result.rewritten : 0;
-  if (rewritten > 0) {
-    writeStdout(buildReloadPluginsPayload(modeArg, rewritten));
+  if (result?.outcome === OUTCOME.REWRITTEN) {
+    writeStdout(buildReloadPluginsPayload(modeArg));
   }
 
   return 0;

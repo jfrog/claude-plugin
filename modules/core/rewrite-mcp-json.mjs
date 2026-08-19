@@ -1,30 +1,28 @@
 // Shared Agent Guard `--rewrite-mcp-json` runner for harness adapters.
 //
-// Harness plugins own path discovery; this module owns discover → project/
-// server resolution → Step 0 gating → spawn/timeout, and soft-fail
-// orchestration. Server id is resolved once for both the gate and AG --server.
+// Harness plugins own path discovery; this module owns:
+//   resolve server/project → discover → skip-if-current → Step 0 gate →
+//   spawn/timeout, soft-fail orchestration with structured outcomes.
+// Server id is resolved once for both the gate and AG --server (always passed).
 //
 // Usage (from a thin Cursor/Claude script next to synced modules/):
 //   import { runRewriteMcpJsonPipeline } from "./modules/core/rewrite-mcp-json.mjs";
-//   await runRewriteMcpJsonPipeline({
+//   const result = await runRewriteMcpJsonPipeline({
 //     discover: () => [...absoluteMcpJsonPaths],
 //     allowRoots: [...],
 //   });
+//   // result: { exitCode, outcome, reason } — exitCode is 0 unless STRICT=1
 //
 // Kill switch: JF_AGENT_REWRITE_MCP_JSON_DISABLE=1 → soft no-op (exit 0).
+// Force refresh: JF_AGENT_REWRITE_MCP_JSON_FORCE=1 → ignore skip marker.
+// Strict: JF_AGENT_REWRITE_MCP_JSON_STRICT=1 → failed_* outcomes exit 1.
 // Local binary: JFROG_AGENT_GUARD_BIN=/path/to/agent-guard (skips npx).
 // Version pin: JFROG_AGENT_GUARD_VERSION (default DEFAULT_AGENT_GUARD_VERSION).
 
-import { spawn } from "node:child_process";
-import {
-  closeSync,
-  openSync,
-  readFileSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -34,112 +32,10 @@ import { createLogger } from "./logger.mjs";
 const log = createLogger("rewrite-mcp-json");
 
 export const AGENT_GUARD_PACKAGE = "@jfrog/agent-guard";
-/** Must stay identical to scripts/claude-mcp-json-discover.mjs REWRITE_DISABLE_ENV. */
 export const DISABLE_ENV = "JF_AGENT_REWRITE_MCP_JSON_DISABLE";
+export const FORCE_ENV = "JF_AGENT_REWRITE_MCP_JSON_FORCE";
+export const STRICT_ENV = "JF_AGENT_REWRITE_MCP_JSON_STRICT";
 export const AGENT_GUARD_BIN_ENV = "JFROG_AGENT_GUARD_BIN";
-/** Optional override for the cross-process rewrite lock file path. */
-export const REWRITE_LOCK_PATH_ENV = "JF_REWRITE_MCP_JSON_LOCK_PATH";
-const DEFAULT_LOCK_BASENAME = "jfrog-agent-rewrite-mcp-json.lock";
-
-/** @type {{ active: boolean, fd: number | null, path: string | null }} */
-const pipelineLock = { active: false, fd: null, path: null };
-
-/** Test helper: clear the in-process rewrite concurrency lock. */
-export function resetRewritePipelineLockForTests() {
-  if (pipelineLock.fd !== null && pipelineLock.path) {
-    releaseRewriteLock(pipelineLock.path, pipelineLock.fd);
-  }
-  pipelineLock.active = false;
-  pipelineLock.fd = null;
-  pipelineLock.path = null;
-}
-
-/**
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {string}
- */
-export function resolveRewriteLockPath(env = process.env) {
-  const override = env[REWRITE_LOCK_PATH_ENV]?.trim();
-  if (override) return override;
-  return path.join(tmpdir(), DEFAULT_LOCK_BASENAME);
-}
-
-/**
- * @param {string} lockPath
- * @param {number} staleMs
- * @returns {number | null} lock fd, or null if held by another process
- */
-export function tryAcquireRewriteLock(lockPath, staleMs) {
-  const maxAge =
-    staleMs === undefined
-      ? DEFAULT_REWRITE_TIMEOUT_MS + DEFAULT_KILL_GRACE_MS
-      : staleMs;
-  try {
-    const fd = openSync(lockPath, "wx");
-    try {
-      writeFileSync(fd, `${process.pid}\n`);
-    } catch {
-      // Best-effort pid record.
-    }
-    return fd;
-  } catch (err) {
-    if (err?.code !== "EEXIST") {
-      log.warn("rewrite lock open failed; proceeding without lock", {
-        error: err?.message ?? String(err),
-      });
-      return -1; // sentinel: lock unavailable, do not block rewrite
-    }
-    try {
-      const st = statSync(lockPath);
-      if (Date.now() - st.mtimeMs > maxAge) {
-        unlinkSync(lockPath);
-        return tryAcquireRewriteLock(lockPath, maxAge);
-      }
-    } catch {
-      // ignore
-    }
-    return null;
-  }
-}
-
-/**
- * @param {string} lockPath
- * @param {number} fd
- */
-export function releaseRewriteLock(lockPath, fd) {
-  if (fd >= 0) {
-    try {
-      closeSync(fd);
-    } catch {
-      // ignore
-    }
-  }
-  try {
-    unlinkSync(lockPath);
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * @typedef {{
- *   status: 'disabled' | 'busy' | 'skipped' | 'blocked' | 'failed' | 'ok',
- *   rewritten: number,
- *   scanned?: number,
- *   reason?: string,
- * }} RewritePipelineResult
- */
-
-/**
- * @param {Partial<RewritePipelineResult> & { status: RewritePipelineResult['status'] }} partial
- * @returns {RewritePipelineResult}
- */
-function pipelineResult(partial) {
-  return {
-    rewritten: 0,
-    ...partial,
-  };
-}
 /**
  * Default npm registry for `npx @jfrog/agent-guard` during mcp.json rewrite.
  *
@@ -154,21 +50,60 @@ export const DEFAULT_AGENT_GUARD_NPM_REGISTRY =
 /**
  * Pinned so a session start cannot execute whatever the registry currently
  * tags as latest. Bump deliberately; JFROG_AGENT_GUARD_VERSION overrides
- * (including "latest").
+ * (including "latest"). First release validated with `--rewrite-mcp-json`.
  */
 export const DEFAULT_AGENT_GUARD_VERSION = "1.6.0";
-/** Shared budget for rewriting all discovered files in one hook invocation. */
+/**
+ * Shared budget for rewriting all discovered files in one hook invocation.
+ * Kept under the harness hook timeout (Cursor sessionStart is 60s); do not
+ * raise this to match the hook timeout.
+ */
 export const DEFAULT_REWRITE_TIMEOUT_MS = 35_000;
 /** SIGTERM → SIGKILL escalation window for a child that ignores the first signal. */
 export const DEFAULT_KILL_GRACE_MS = 2_000;
+
+/** Newest setup.json "version" this code understands (best-effort on mismatch). */
+export const SUPPORTED_SETUP_FILE_VERSION = 1;
+
+export const OUTCOME = Object.freeze({
+  DISABLED: "disabled",
+  SKIPPED_CURRENT: "skipped_current",
+  SKIPPED_NO_PATHS: "skipped_no_paths",
+  SKIPPED_NO_PROJECT: "skipped_no_project",
+  SKIPPED_NO_SERVER: "skipped_no_server",
+  SKIPPED_UNSAFE_PROJECT: "skipped_unsafe_project",
+  SKIPPED_UNSAFE_SERVER: "skipped_unsafe_server",
+  SKIPPED_GATE: "skipped_gate",
+  FAILED_DISCOVER: "failed_discover",
+  FAILED_GATE: "failed_gate",
+  FAILED_ALLOW_ROOTS: "failed_allow_roots",
+  FAILED_SPAWN: "failed_spawn",
+  REWRITTEN: "rewritten",
+});
+
+/**
+ * @param {string} outcome
+ * @param {string} [reason]
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ exitCode: number, outcome: string, reason: string }}
+ */
+export function pipelineResult(outcome, reason = "", env = process.env) {
+  const failed = String(outcome).startsWith("failed_");
+  const exitCode = failed && env[STRICT_ENV] === "1" ? 1 : 0;
+  return { exitCode, outcome, reason };
+}
 
 export function isRewriteDisabled(env = process.env) {
   return env[DISABLE_ENV] === "1";
 }
 
+export function isRewriteForced(env = process.env) {
+  return env[FORCE_ENV] === "1";
+}
+
 /**
- * True when JFROG_URL/JF_URL + access token are set — AG reads env directly,
- * so callers must omit `--server`.
+ * True when JFROG_URL/JF_URL + access token are set.
+ * Used by the gate (Path A); plugin rewrite always passes `--server` separately.
  * @param {NodeJS.ProcessEnv} [env]
  */
 export function hasJfrogUrlTokenEnv(env = process.env) {
@@ -186,112 +121,260 @@ function isPlainObject(value) {
 }
 
 /**
- * Scan mcp.json files for an existing Agent Guard `_JF_ARGS` project= value.
- * @param {string[]} mcpPaths
- * @param {{ readFileSyncFn?: typeof readFileSync }} [opts]
+ * @param {string} [url]
  * @returns {string}
  */
-export function scanMcpJsonForProject(mcpPaths, opts = {}) {
-  const readFn = opts.readFileSyncFn ?? readFileSync;
-  for (const mcpPath of mcpPaths ?? []) {
-    const servers = readMcpServers(mcpPath, readFn);
-    if (!servers) continue;
-    for (const entry of Object.values(servers)) {
-      if (!isPlainObject(entry)) continue;
-      const envBlock = entry.env;
-      if (!isPlainObject(envBlock)) continue;
-      const jfArgs = envBlock._JF_ARGS;
-      if (typeof jfArgs !== "string") continue;
-      const match = /(?:^|&)project=([^&]*)/.exec(jfArgs);
-      const project = match?.[1]?.trim();
-      if (project) return project;
-    }
-  }
-  return "";
+export function normalizeJpdUrl(url) {
+  return String(url ?? "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 /**
- * Scan mcp.json files for an existing Agent Guard `--server <id>` in args.
- * @param {string[]} mcpPaths
- * @param {{ readFileSyncFn?: typeof readFileSync }} [opts]
+ * @param {NodeJS.ProcessEnv} [env]
  * @returns {string}
  */
-export function scanMcpJsonForServerId(mcpPaths, opts = {}) {
-  const readFn = opts.readFileSyncFn ?? readFileSync;
-  for (const mcpPath of mcpPaths ?? []) {
-    const servers = readMcpServers(mcpPath, readFn);
-    if (!servers) continue;
-    for (const entry of Object.values(servers)) {
-      if (!isPlainObject(entry)) continue;
-      const args = entry.args;
-      if (!Array.isArray(args)) continue;
-      for (let i = 0; i < args.length; i++) {
-        if (args[i] === "--server" && typeof args[i + 1] === "string") {
-          const id = args[i + 1].trim();
-          if (id) return id;
-        }
-      }
-    }
-  }
-  return "";
+export function resolveJfrogHomeDir(env = process.env) {
+  const fromEnv = env.JFROG_CLI_HOME_DIR?.trim();
+  if (fromEnv) return fromEnv;
+  return path.join(homedir(), ".jfrog");
 }
 
 /**
- * @param {string} mcpPath
- * @param {typeof readFileSync} readFn
- * @returns {Record<string, unknown> | null}
+ * Default skip-if-current marker under the jf CLI home.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string}
  */
-function readMcpServers(mcpPath, readFn) {
+export function defaultRewriteMarkerPath(env = process.env) {
+  return path.join(
+    resolveJfrogHomeDir(env),
+    "agent-hooks",
+    "rewrite-mcp-json.marker",
+  );
+}
+
+/**
+ * Mirror of Agent Guard `ActiveProjectFromSetupFile`: read
+ * `{JFROG_CLI_HOME}/setup.json` → servers[id].currentActiveProject.
+ * Never throws; returns "" when missing/unreadable/no match.
+ *
+ * @param {string} serverId
+ * @param {string} [jpdUrl]
+ * @param {{
+ *   env?: NodeJS.ProcessEnv,
+ *   readFileSyncFn?: typeof readFileSync,
+ *   setupPath?: string,
+ * }} [opts]
+ * @returns {string}
+ */
+export function activeProjectFromSetupFile(serverId, jpdUrl = "", opts = {}) {
+  const env = opts.env ?? process.env;
+  const readFn = opts.readFileSyncFn ?? readFileSync;
+  const setupPath =
+    opts.setupPath ?? path.join(resolveJfrogHomeDir(env), "setup.json");
+  const wantUrl = normalizeJpdUrl(jpdUrl);
+  const id = String(serverId ?? "").trim();
+
+  let raw;
   try {
-    const raw = readFn(mcpPath, "utf8");
-    const parsed = JSON.parse(raw);
-    if (!isPlainObject(parsed) || !isPlainObject(parsed.mcpServers)) {
-      return null;
+    raw = readFn(setupPath, "utf8");
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      log.debug("setup file: not found", { path: setupPath });
     }
-    return /** @type {Record<string, unknown>} */ (parsed.mcpServers);
-  } catch {
-    return null;
+    return "";
   }
+
+  /** @type {{ version?: number, servers?: Record<string, { jpdUrl?: string, currentActiveProject?: string }> }} */
+  let sf = {};
+  try {
+    sf = JSON.parse(raw);
+  } catch {
+    return "";
+  }
+  if (!isPlainObject(sf) || !isPlainObject(sf.servers)) return "";
+  if (
+    typeof sf.version === "number" &&
+    sf.version !== SUPPORTED_SETUP_FILE_VERSION
+  ) {
+    // Best-effort parse (matches AG).
+  }
+
+  const servers = sf.servers;
+  if (id) {
+    const entry = servers[id];
+    const project = entry?.currentActiveProject?.trim?.() || "";
+    if (project) {
+      const entryUrl = normalizeJpdUrl(entry.jpdUrl);
+      if (wantUrl === "" || entryUrl === wantUrl) return project;
+    }
+  }
+
+  if (wantUrl) {
+    const ids = Object.keys(servers).sort();
+    for (const sid of ids) {
+      const entry = servers[sid];
+      const project = entry?.currentActiveProject?.trim?.() || "";
+      if (project && normalizeJpdUrl(entry.jpdUrl) === wantUrl) return project;
+    }
+  }
+  return "";
 }
 
 /**
- * Resolve JFrog project key: env → existing AG `_JF_ARGS` → "".
+ * Parse `jf config show --format=json` into a server list.
+ * @param {string} stdout
+ * @returns {{ serverId: string, jpdUrl: string, isDefault: boolean }[]}
+ */
+export function parseJfConfigShowJson(stdout) {
+  if (typeof stdout !== "string" || !stdout.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  const list = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.servers)
+      ? parsed.servers
+      : parsed
+        ? [parsed]
+        : [];
+  /** @type {{ serverId: string, jpdUrl: string, isDefault: boolean }[]} */
+  const out = [];
+  for (const s of list) {
+    if (!isPlainObject(s)) continue;
+    const serverId = String(s.serverId ?? "").trim();
+    if (!serverId) continue;
+    const jpdUrl = normalizeJpdUrl(
+      s.url || s.Url || s.artifactoryUrl || s.platformUrl || "",
+    );
+    out.push({
+      serverId,
+      jpdUrl,
+      isDefault: Boolean(s.isDefault),
+    });
+  }
+  return out;
+}
+
+/**
+ * Exactly one server, or the isDefault entry. Otherwise { error }.
+ * @param {{ serverId: string, jpdUrl: string, isDefault: boolean }[]} servers
+ * @returns {{ serverId: string, jpdUrl: string } | { error: "missing" | "no_default" }}
+ */
+export function pickDefaultJfCliServer(servers) {
+  const list = servers ?? [];
+  if (list.length === 0) return { error: "missing" };
+  if (list.length === 1) {
+    return { serverId: list[0].serverId, jpdUrl: list[0].jpdUrl };
+  }
+  const def = list.find((s) => s.isDefault);
+  if (def) return { serverId: def.serverId, jpdUrl: def.jpdUrl };
+  return { error: "no_default" };
+}
+
+/**
+ * @param {{
+ *   env?: NodeJS.ProcessEnv,
+ *   spawnSyncFn?: typeof spawnSync,
+ * }} [opts]
+ * @returns {{ serverId: string, jpdUrl: string }[]}
+ */
+export function listJfCliServers(opts = {}) {
+  const env = opts.env ?? process.env;
+  const spawnSyncFn = opts.spawnSyncFn ?? spawnSync;
+  let res;
+  try {
+    res = spawnSyncFn("jf", ["config", "show", "--format=json"], {
+      encoding: "utf8",
+      timeout: 5_000,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch {
+    return [];
+  }
+  if (res?.error || res.status !== 0) return [];
+  return parseJfConfigShowJson(res.stdout ?? "");
+}
+
+/**
+ * Resolve server for gate + rewrite. Always expects a concrete server id
+ * for plugin MCP (Shay): hint → jf config (one / isDefault) → env.
+ *
  * @param {NodeJS.ProcessEnv} [env]
  * @param {{
- *   mcpPaths?: string[],
+ *   serverIdHint?: string,
+ *   spawnSyncFn?: typeof spawnSync,
+ * }} [opts]
+ * @returns {{
+ *   serverId: string,
+ *   jpdUrl: string,
+ * } | {
+ *   error: "missing" | "no_default",
+ * }}
+ */
+export function resolveRewriteServer(env = process.env, opts = {}) {
+  const servers = listJfCliServers({
+    env,
+    spawnSyncFn: opts.spawnSyncFn,
+  });
+
+  const hint = opts.serverIdHint?.trim();
+  if (hint) {
+    const match = servers.find((s) => s.serverId === hint);
+    return {
+      serverId: hint,
+      jpdUrl: match?.jpdUrl ?? "",
+    };
+  }
+
+  const picked = pickDefaultJfCliServer(servers);
+  if (!("error" in picked)) return picked;
+
+  const fromEnv = env.JF_SERVER?.trim() || env.JFROG_SERVER_ID?.trim() || "";
+  if (fromEnv) {
+    const match = servers.find((s) => s.serverId === fromEnv);
+    return { serverId: fromEnv, jpdUrl: match?.jpdUrl ?? "" };
+  }
+  return picked.error === "no_default"
+    ? { error: "no_default" }
+    : { error: "missing" };
+}
+
+/**
+ * Resolve JFrog project key: env → setup.json (AG-compatible) → "".
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{
+ *   serverId?: string,
+ *   jpdUrl?: string,
  *   readFileSyncFn?: typeof readFileSync,
+ *   setupPath?: string,
  * }} [opts]
  * @returns {string}
  */
 export function resolveRewriteProject(env = process.env, opts = {}) {
   const fromEnv = env.JF_PROJECT?.trim() || env.JFROG_PROJECT?.trim() || "";
   if (fromEnv) return fromEnv;
-  return scanMcpJsonForProject(opts.mcpPaths ?? [], {
+  return activeProjectFromSetupFile(opts.serverId ?? "", opts.jpdUrl ?? "", {
+    env,
     readFileSyncFn: opts.readFileSyncFn,
+    setupPath: opts.setupPath,
   });
 }
 
 /**
- * Resolve server ID for gate + rewrite (same priority both places):
- * omit when URL+token env → existing AG `--server` in mcp.json →
- * `serverIdHint` → JF_SERVER / JFROG_SERVER_ID → "".
+ * @deprecated Use resolveRewriteServer. Kept for callers that only need the id.
  * @param {NodeJS.ProcessEnv} [env]
- * @param {{
- *   mcpPaths?: string[],
- *   readFileSyncFn?: typeof readFileSync,
- *   serverIdHint?: string,
- * }} [opts]
+ * @param {{ serverIdHint?: string, spawnSyncFn?: typeof spawnSync }} [opts]
  * @returns {string}
  */
 export function resolveRewriteServerId(env = process.env, opts = {}) {
-  if (hasJfrogUrlTokenEnv(env)) return "";
-  const fromMcp = scanMcpJsonForServerId(opts.mcpPaths ?? [], {
-    readFileSyncFn: opts.readFileSyncFn,
-  });
-  if (fromMcp) return fromMcp;
-  const hint = opts.serverIdHint?.trim();
-  if (hint) return hint;
-  return env.JF_SERVER?.trim() || env.JFROG_SERVER_ID?.trim() || "";
+  const resolved = resolveRewriteServer(env, opts);
+  if ("error" in resolved) return "";
+  return resolved.serverId;
 }
 
 /**
@@ -443,6 +526,11 @@ export async function killRewriteChildTree(child, opts = {}) {
     graceMs,
   });
   signalTree("SIGKILL");
+
+  // Wait for confirmed exit so callers do not process.exit while AG is
+  // mid-write (truncated mcp.json). Cap at the same grace window.
+  if (graceMs <= 0 || !isAlive()) return;
+  await waitForExitOrTimeout(opts.waitForExit, graceMs);
 }
 
 /**
@@ -493,13 +581,68 @@ export function resolveAgentGuardBin(env = process.env) {
 /**
  * @param {{
  *   paths: string[],
+ *   project: string,
+ *   serverId: string,
+ *   agSpec: string,
+ *   statSyncFn?: typeof statSync,
+ * }} opts
+ * @returns {string}
+ */
+export function computeRewriteFingerprint(opts) {
+  const statFn = opts.statSyncFn ?? statSync;
+  const pathParts = [...(opts.paths ?? [])].sort().map((p) => {
+    try {
+      const st = statFn(p);
+      return `${p}:${st.mtimeMs}:${st.size}`;
+    } catch {
+      return `${p}:missing`;
+    }
+  });
+  const payload = JSON.stringify({
+    paths: pathParts,
+    project: opts.project,
+    serverId: opts.serverId,
+    agSpec: opts.agSpec,
+  });
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+/**
+ * @param {string} markerPath
+ * @param {{ readFileSyncFn?: typeof readFileSync }} [opts]
+ * @returns {string}
+ */
+export function readRewriteMarker(markerPath, opts = {}) {
+  const readFn = opts.readFileSyncFn ?? readFileSync;
+  try {
+    return String(readFn(markerPath, "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * @param {string} markerPath
+ * @param {string} fingerprint
+ * @param {{ writeFileSyncFn?: typeof writeFileSync, mkdirSyncFn?: typeof mkdirSync }} [opts]
+ */
+export function writeRewriteMarker(markerPath, fingerprint, opts = {}) {
+  const writeFn = opts.writeFileSyncFn ?? writeFileSync;
+  const mkdirFn = opts.mkdirSyncFn ?? mkdirSync;
+  mkdirFn(path.dirname(markerPath), { recursive: true });
+  writeFn(markerPath, `${fingerprint}\n`, "utf8");
+}
+
+/**
+ * @param {{
+ *   paths: string[],
  *   project?: string,
  *   serverId?: string,
  *   allowRoots?: string[],
  *   env?: NodeJS.ProcessEnv,
  * }} opts
  * @returns {string[]}
- * @throws {Error} when project is missing or paths are empty
+ * @throws {Error} when project/server missing or paths are empty
  */
 export function buildAgentGuardRewriteArgs(opts) {
   const env = opts.env ?? process.env;
@@ -507,8 +650,7 @@ export function buildAgentGuardRewriteArgs(opts) {
   if (paths.length === 0) {
     throw new Error("rewrite-mcp-json requires at least one mcp.json path");
   }
-  const project =
-    opts.project?.trim() || resolveRewriteProject(env, { mcpPaths: paths });
+  const project = opts.project?.trim() || resolveRewriteProject(env, {});
   if (!project) {
     throw new Error("rewrite-mcp-json requires --project (or JF_PROJECT)");
   }
@@ -519,11 +661,12 @@ export function buildAgentGuardRewriteArgs(opts) {
   const server =
     opts.serverId !== undefined
       ? opts.serverId.trim()
-      : resolveRewriteServerId(env, { mcpPaths: paths });
-  if (server) {
-    assertSafeRewriteIdentifier(server, "server");
-    args.push("--server", server);
+      : resolveRewriteServerId(env);
+  if (!server) {
+    throw new Error("rewrite-mcp-json requires --server (or JF_SERVER)");
   }
+  assertSafeRewriteIdentifier(server, "server");
+  args.push("--server", server);
 
   const agentGuardRegistry = env.JFROG_AGENT_GUARD_REPO?.trim();
   if (agentGuardRegistry) {
@@ -723,13 +866,12 @@ export function runAgentGuardRewriteMcpJson(opts) {
 }
 
 /**
- * @param {string} raw
- * @returns {{ scanned?: number, rewritten?: number, files?: string[], errors?: string[], dryRun?: boolean } | null}
+ * @param {string} text
+ * @returns {Record<string, unknown> | null}
  */
-export function parseRewriteMcpJsonResult(raw) {
-  if (typeof raw !== "string" || !raw.trim()) return null;
+function tryParseJsonObject(text) {
   try {
-    const parsed = JSON.parse(raw.trim());
+    const parsed = JSON.parse(text);
     if (
       typeof parsed !== "object" ||
       parsed === null ||
@@ -741,6 +883,35 @@ export function parseRewriteMcpJsonResult(raw) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse AG `--format json` summary. Tolerates leading npx noise by trying the
+ * last non-empty line, then the last `{...}` slice.
+ * @param {string} raw
+ * @returns {{ scanned?: number, rewritten?: number, files?: string[], errors?: string[], dryRun?: boolean } | null}
+ */
+export function parseRewriteMcpJsonResult(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const trimmed = raw.trim();
+  const direct = tryParseJsonObject(trimmed);
+  if (direct) return direct;
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const parsed = tryParseJsonObject(lines[i]);
+    if (parsed) return parsed;
+  }
+
+  const start = trimmed.lastIndexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return tryParseJsonObject(trimmed.slice(start, end + 1));
+  }
+  return null;
 }
 
 /**
@@ -756,27 +927,31 @@ export function redactUrlCredentials(text) {
 }
 
 /**
- * Orchestration: kill switch → discover → project/server → Step 0 gate →
- * rewrite. Server id is resolved once and reused for both the gate and AG
- * `--server`. Soft-fail: never throws for expected skip/block/fail paths.
- * Cross-process file lock (+ in-process guard) returns `{ status: "busy" }`
- * so SessionStart + FileChanged cannot rewrite the same files in parallel.
- * Harness adapters supply discovery + allow-roots.
+ * Orchestration: kill switch → server/project → discover → skip-if-current →
+ * Step 0 gate → rewrite. Server id is resolved once and reused for both the
+ * gate and AG `--server` (always passed). Returns a structured result; exitCode
+ * is 0 unless JF_AGENT_REWRITE_MCP_JSON_STRICT=1 and outcome is failed_*.
  *
  * @param {{
  *   discover: () => string[] | Promise<string[]>,
  *   allowRoots?: string[] | ((paths: string[]) => string[]),
  *   env?: NodeJS.ProcessEnv,
  *   spawnFn?: typeof spawn,
+ *   spawnSyncFn?: typeof spawnSync,
  *   timeoutMs?: number,
  *   graceMs?: number,
  *   platform?: NodeJS.Platform,
  *   killFn?: (pid: number, signal?: string) => true,
  *   runAgentGuardCheckFn?: typeof runAgentGuardCheck,
  *   readFileSyncFn?: typeof readFileSync,
+ *   writeFileSyncFn?: typeof writeFileSync,
+ *   mkdirSyncFn?: typeof mkdirSync,
+ *   statSyncFn?: typeof statSync,
  *   serverIdHint?: string,
+ *   markerPath?: string,
+ *   setupPath?: string,
  * }} opts
- * @returns {Promise<RewritePipelineResult>}
+ * @returns {Promise<{ exitCode: number, outcome: string, reason: string }>}
  */
 export async function runRewriteMcpJsonPipeline(opts) {
   const env = opts.env ?? process.env;
@@ -784,111 +959,122 @@ export async function runRewriteMcpJsonPipeline(opts) {
 
   if (isRewriteDisabled(env)) {
     log.info("rewrite disabled via env", { env: DISABLE_ENV });
-    return pipelineResult({ status: "disabled" });
+    return pipelineResult(OUTCOME.DISABLED, DISABLE_ENV, env);
   }
 
-  if (pipelineLock.active) {
-    log.info("rewrite already in progress; soft no-op");
-    return pipelineResult({ status: "busy" });
+  const serverResolved = resolveRewriteServer(env, {
+    serverIdHint: opts.serverIdHint,
+    spawnSyncFn: opts.spawnSyncFn,
+  });
+  if ("error" in serverResolved) {
+    const reason =
+      serverResolved.error === "no_default"
+        ? "multiple jf config servers and none isDefault"
+        : "no jf config server / JF_SERVER";
+    log.info("rewrite skipped; missing server", { reason });
+    return pipelineResult(OUTCOME.SKIPPED_NO_SERVER, reason, env);
+  }
+  const { serverId, jpdUrl } = serverResolved;
+  if (!isSafeRewriteIdentifier(serverId)) {
+    log.info("rewrite skipped; unsafe server id", {});
+    return pipelineResult(
+      OUTCOME.SKIPPED_UNSAFE_SERVER,
+      "unsafe server id",
+      env,
+    );
   }
 
-  const lockPath = resolveRewriteLockPath(env);
-  const staleMs =
-    (opts.timeoutMs === undefined ? DEFAULT_REWRITE_TIMEOUT_MS : opts.timeoutMs) +
-    (opts.graceMs === undefined ? DEFAULT_KILL_GRACE_MS : opts.graceMs);
-  const lockFd = tryAcquireRewriteLock(lockPath, staleMs);
-  if (lockFd === null) {
-    log.info("rewrite lock held; soft no-op", { lockPath });
-    return pipelineResult({ status: "busy" });
+  const project = resolveRewriteProject(env, {
+    serverId,
+    jpdUrl,
+    readFileSyncFn: opts.readFileSyncFn,
+    setupPath: opts.setupPath,
+  });
+  if (!project) {
+    log.info("rewrite skipped; missing project", {});
+    return pipelineResult(
+      OUTCOME.SKIPPED_NO_PROJECT,
+      "missing JF_PROJECT / setup.json currentActiveProject",
+      env,
+    );
+  }
+  if (!isSafeRewriteIdentifier(project)) {
+    log.info("rewrite skipped; unsafe JF_PROJECT", {});
+    return pipelineResult(
+      OUTCOME.SKIPPED_UNSAFE_PROJECT,
+      "unsafe project",
+      env,
+    );
   }
 
-  pipelineLock.active = true;
-  pipelineLock.fd = lockFd >= 0 ? lockFd : null;
-  pipelineLock.path = lockFd >= 0 ? lockPath : null;
-
-  try {
-    return await runRewriteMcpJsonPipelineLocked(opts, env, checkFn);
-  } finally {
-    if (lockFd >= 0) {
-      releaseRewriteLock(lockPath, lockFd);
-    }
-    pipelineLock.active = false;
-    pipelineLock.fd = null;
-    pipelineLock.path = null;
-  }
-}
-
-/**
- * @param {Parameters<typeof runRewriteMcpJsonPipeline>[0]} opts
- * @param {NodeJS.ProcessEnv} env
- * @param {typeof runAgentGuardCheck} checkFn
- * @returns {Promise<RewritePipelineResult>}
- */
-async function runRewriteMcpJsonPipelineLocked(opts, env, checkFn) {
   let paths;
   try {
     paths = await opts.discover();
   } catch (err) {
-    log.error("discover failed; soft no-op", {
-      error: err?.message ?? String(err),
-    });
-    return pipelineResult({
-      status: "failed",
-      reason: err?.message ?? String(err),
-    });
+    const reason = err?.message ?? String(err);
+    log.error("discover failed; soft no-op", { error: reason });
+    return pipelineResult(OUTCOME.FAILED_DISCOVER, reason, env);
   }
 
   if (!Array.isArray(paths) || paths.length === 0) {
     log.info("no mcp.json files found; skip rewrite");
-    return pipelineResult({ status: "skipped", reason: "no mcp.json files" });
+    return pipelineResult(OUTCOME.SKIPPED_NO_PATHS, "no mcp.json", env);
   }
 
-  const project = resolveRewriteProject(env, {
-    mcpPaths: paths,
-    readFileSyncFn: opts.readFileSyncFn,
+  const agSpec = resolveAgentGuardSpec(env);
+  const fingerprint = computeRewriteFingerprint({
+    paths,
+    project,
+    serverId,
+    agSpec,
+    statSyncFn: opts.statSyncFn,
   });
-  if (!project) {
-    log.info("rewrite skipped; missing JF_PROJECT", {});
-    return pipelineResult({ status: "skipped", reason: "missing JF_PROJECT" });
-  }
-  if (!isSafeRewriteIdentifier(project)) {
-    log.info("rewrite skipped; unsafe JF_PROJECT", {});
-    return pipelineResult({ status: "skipped", reason: "unsafe JF_PROJECT" });
-  }
-
-  const serverId = resolveRewriteServerId(env, {
-    mcpPaths: paths,
-    readFileSyncFn: opts.readFileSyncFn,
-    serverIdHint: opts.serverIdHint,
-  });
-  if (serverId && !isSafeRewriteIdentifier(serverId)) {
-    log.info("rewrite skipped; unsafe server id", {});
-    return pipelineResult({ status: "skipped", reason: "unsafe server id" });
+  const markerPath = opts.markerPath ?? defaultRewriteMarkerPath(env);
+  if (
+    !isRewriteForced(env) &&
+    readRewriteMarker(markerPath, { readFileSyncFn: opts.readFileSyncFn }) ===
+      fingerprint
+  ) {
+    log.info("rewrite skipped; already current", { markerPath });
+    return pipelineResult(OUTCOME.SKIPPED_CURRENT, markerPath, env);
   }
 
-  const gate = await checkFn({
-    serverId: serverId || undefined,
-    env,
-  });
+  let gate;
+  try {
+    gate = await checkFn({
+      serverId,
+      env,
+    });
+  } catch (err) {
+    const reason = redactUrlCredentials(err?.message ?? String(err));
+    log.error("agent-guard check threw; soft no-op", { error: reason });
+    return pipelineResult(OUTCOME.FAILED_GATE, reason, env);
+  }
   if (gate.code !== EXIT_ENABLED) {
+    const reason = redactUrlCredentials(gate.reason ?? "");
     log.info("agent-guard check blocked rewrite; soft no-op", {
       code: gate.code,
-      reason: redactUrlCredentials(gate.reason ?? ""),
+      reason,
     });
-    return pipelineResult({
-      status: "blocked",
-      reason: redactUrlCredentials(gate.reason ?? ""),
-    });
+    return pipelineResult(OUTCOME.SKIPPED_GATE, reason, env);
   }
 
-  const allowRoots =
-    typeof opts.allowRoots === "function"
-      ? opts.allowRoots(paths)
-      : (opts.allowRoots ?? []);
+  let allowRoots;
+  try {
+    allowRoots =
+      typeof opts.allowRoots === "function"
+        ? opts.allowRoots(paths)
+        : (opts.allowRoots ?? []);
+  } catch (err) {
+    const reason = redactUrlCredentials(err?.message ?? String(err));
+    log.error("allowRoots failed; soft no-op", { error: reason });
+    return pipelineResult(OUTCOME.FAILED_ALLOW_ROOTS, reason, env);
+  }
 
   log.info("rewrite-mcp-json targets", {
     count: paths.length,
     allowRoots: allowRoots.length,
+    outcome: "rewrite",
   });
 
   const budgetMs =
@@ -909,35 +1095,53 @@ async function runRewriteMcpJsonPipelineLocked(opts, env, checkFn) {
   const durMs = Date.now() - startedAtMs;
 
   if (result.code !== 0) {
+    const reason = redactUrlCredentials((result.stderr || "").trim()).slice(
+      0,
+      500,
+    );
     log.error("rewrite-mcp-json failed", {
       code: result.code,
-      stderr: redactUrlCredentials((result.stderr || "").trim()).slice(0, 500),
+      stderr: reason,
       durMs,
+      outcome: OUTCOME.FAILED_SPAWN,
     });
-    return pipelineResult({
-      status: "failed",
-      reason: redactUrlCredentials((result.stderr || "").trim()).slice(0, 200),
+    return pipelineResult(OUTCOME.FAILED_SPAWN, reason, env);
+  }
+
+  const postFingerprint = computeRewriteFingerprint({
+    paths,
+    project,
+    serverId,
+    agSpec,
+    statSyncFn: opts.statSyncFn,
+  });
+  try {
+    writeRewriteMarker(markerPath, postFingerprint, {
+      writeFileSyncFn: opts.writeFileSyncFn,
+      mkdirSyncFn: opts.mkdirSyncFn,
+    });
+  } catch (err) {
+    log.warn("rewrite marker write failed", {
+      markerPath,
+      error: err?.message ?? String(err),
     });
   }
 
   const summary = parseRewriteMcpJsonResult(result.stdout);
-  const rewritten =
-    typeof summary?.rewritten === "number" ? summary.rewritten : 0;
-  const scanned = typeof summary?.scanned === "number" ? summary.scanned : undefined;
   if (summary) {
     log.info("rewrite-mcp-json ok", {
       scanned: summary.scanned,
       rewritten: summary.rewritten,
       errors: summary.errors?.length ?? 0,
       durMs,
+      outcome: OUTCOME.REWRITTEN,
     });
   } else {
-    log.info("rewrite-mcp-json ok; no JSON summary", { durMs });
+    log.info("rewrite-mcp-json ok; no JSON summary", {
+      durMs,
+      outcome: OUTCOME.REWRITTEN,
+    });
   }
 
-  return pipelineResult({
-    status: "ok",
-    rewritten,
-    scanned,
-  });
+  return pipelineResult(OUTCOME.REWRITTEN, "", env);
 }

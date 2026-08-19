@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" session-start",
-            "timeout": 45,
+            "timeout": 60,
             "statusMessage": "Aligning plugin MCPs with JFrog Agent Guard…"
           }
         ]
@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" file-changed",
-            "timeout": 45,
+            "timeout": 60,
             "statusMessage": "Re-aligning plugin MCPs…"
           }
         ]

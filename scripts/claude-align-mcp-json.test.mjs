@@ -26,6 +26,7 @@ import {
   runClaudeAlignMcpJson,
 } from "./claude-align-mcp-json.mjs";
 import { runRegisterWatchPaths } from "./claude-register-align-watch-paths.mjs";
+import { OUTCOME } from "../modules/core/rewrite-mcp-json.mjs";
 
 const HOOKS_JSON_PATH = path.resolve(import.meta.dirname, "../hooks/hooks.json");
 
@@ -105,7 +106,7 @@ test("runClaudeAlignMcpJson no-ops on unknown mode", async () => {
     readStdinFn: async () => "",
     runRewriteMcpJsonPipelineFn: async () => {
       called = true;
-      return 0;
+      return { exitCode: 0, outcome: OUTCOME.DISABLED, reason: "" };
     },
     writeStdout: () => {},
   });
@@ -120,7 +121,7 @@ test("runClaudeAlignMcpJson no-ops when harness is not claude_code", async () =>
       JSON.stringify({ session_id: "s1", cursor_version: "1.0.0" }),
     runRewriteMcpJsonPipelineFn: async () => {
       called = true;
-      return 0;
+      return { exitCode: 0, outcome: OUTCOME.DISABLED, reason: "" };
     },
     writeStdout: () => {},
   });
@@ -161,7 +162,7 @@ test("runClaudeAlignMcpJson passes discovered paths and does not emit watchPaths
         typeof opts.allowRoots === "function"
           ? opts.allowRoots(paths)
           : opts.allowRoots;
-      return { status: "ok", rewritten: 0, scanned: 0 };
+      return { exitCode: 0, outcome: OUTCOME.SKIPPED_CURRENT, reason: "" };
     },
     writeStdout: (s) => {
       stdout += s;
@@ -174,7 +175,7 @@ test("runClaudeAlignMcpJson passes discovered paths and does not emit watchPaths
   assert.equal(stdout, "");
 });
 
-test("runClaudeAlignMcpJson emits reload hint when files were rewritten", async () => {
+test("runClaudeAlignMcpJson emits reload hint when outcome is rewritten", async () => {
   let stdout = "";
   const code = await runClaudeAlignMcpJson("session-start", {
     env: { [CLAUDE_CONFIG_DIR_ENV]: tempDir("reload") },
@@ -185,9 +186,9 @@ test("runClaudeAlignMcpJson emits reload hint when files were rewritten", async 
         source: "startup",
       }),
     runRewriteMcpJsonPipelineFn: async () => ({
-      status: "ok",
-      rewritten: 2,
-      scanned: 3,
+      exitCode: 0,
+      outcome: OUTCOME.REWRITTEN,
+      reason: "",
     }),
     writeStdout: (s) => {
       stdout += s;
@@ -200,6 +201,37 @@ test("runClaudeAlignMcpJson emits reload hint when files were rewritten", async 
     payload.hookSpecificOutput.additionalContext,
     /\/reload-plugins/,
   );
+  assert.match(
+    payload.hookSpecificOutput.additionalContext,
+    /MCP configs updated/,
+  );
+  assert.doesNotMatch(
+    payload.hookSpecificOutput.additionalContext,
+    /\d+ files? updated/,
+  );
+});
+
+test("runClaudeAlignMcpJson does not emit reload when outcome is not rewritten", async () => {
+  let stdout = "";
+  const code = await runClaudeAlignMcpJson("session-start", {
+    env: { [CLAUDE_CONFIG_DIR_ENV]: tempDir("no-reload") },
+    readStdinFn: async () =>
+      JSON.stringify({
+        session_id: "s1",
+        hook_event_name: "SessionStart",
+        source: "startup",
+      }),
+    runRewriteMcpJsonPipelineFn: async () => ({
+      exitCode: 0,
+      outcome: OUTCOME.SKIPPED_GATE,
+      reason: "Disabled: test",
+    }),
+    writeStdout: (s) => {
+      stdout += s;
+    },
+  });
+  assert.equal(code, 0);
+  assert.equal(stdout, "");
 });
 
 test("runClaudeAlignMcpJson file-changed emits reload hint without watchPaths", async () => {
@@ -215,7 +247,11 @@ test("runClaudeAlignMcpJson file-changed emits reload hint without watchPaths", 
       }),
     runRewriteMcpJsonPipelineFn: async () => {
       called = true;
-      return { status: "ok", rewritten: 1, scanned: 1 };
+      return {
+        exitCode: 0,
+        outcome: OUTCOME.REWRITTEN,
+        reason: "",
+      };
     },
     writeStdout: (s) => {
       stdout += s;
@@ -228,6 +264,10 @@ test("runClaudeAlignMcpJson file-changed emits reload hint without watchPaths", 
   assert.match(
     payload.hookSpecificOutput.additionalContext,
     /\/reload-plugins/,
+  );
+  assert.match(
+    payload.hookSpecificOutput.additionalContext,
+    /MCP configs updated/,
   );
   assert.equal(payload.hookSpecificOutput.watchPaths, undefined);
 });
