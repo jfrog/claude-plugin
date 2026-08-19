@@ -57,7 +57,7 @@ export const RECOMMENDED_FILE_CHANGED_MATCHER =
 export const MODES = Object.freeze(new Set(["session-start", "file-changed"]));
 
 const RELOAD_HINT =
-  "MCP configs updated. Run /reload-plugins so Claude reconnects those MCPs.";
+  "JFrog Agent Guard secured your plugins' MCP servers. Run /reload-plugins to reconnect.";
 
 /**
  * @param {string | undefined} modeArg

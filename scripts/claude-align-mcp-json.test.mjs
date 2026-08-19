@@ -203,7 +203,7 @@ test("runClaudeAlignMcpJson emits reload hint when outcome is rewritten", async 
   );
   assert.match(
     payload.hookSpecificOutput.additionalContext,
-    /MCP configs updated/,
+    /JFrog Agent Guard secured your plugins' MCP servers/,
   );
   assert.doesNotMatch(
     payload.hookSpecificOutput.additionalContext,
@@ -267,7 +267,7 @@ test("runClaudeAlignMcpJson file-changed emits reload hint without watchPaths", 
   );
   assert.match(
     payload.hookSpecificOutput.additionalContext,
-    /MCP configs updated/,
+    /JFrog Agent Guard secured your plugins' MCP servers/,
   );
   assert.equal(payload.hookSpecificOutput.watchPaths, undefined);
 });
