@@ -3,27 +3,35 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Requests a JFrog Unified Policy waiver for a governance-blocked skill. Invoked by
-// the agent (via Bash) when the user agrees to a waiver after a governance block —
-// the scope flags come pre-filled from the block message; the user supplies only the
-// justification. Usage: node request-waiver.mjs --application-key <k> --stage-key <k>
-// --stage-gate <g> --justification "<reason>" [--expiry-days 30]. Resolves JFrog
-// credentials the same way the hook does (JFROG_URL/JF_ACCESS_TOKEN, or `jf config
-// export`), then POSTs to the waivers endpoint, printing a single JSON result line
-// (for the agent to render a confirmation) and exiting non-zero on failure.
+// Requests a JFrog Unified Policy waiver for a governance-blocked skill. Invoked by the
+// agent (via Bash) when the user agrees to a waiver after a governance block — the scope
+// flags come pre-filled from the block message; the user supplies only the justification.
+//
+//   node request-waiver.mjs --project <k> --skill-name <n> --skill-version <v> \
+//     --skill-repo-path <p> --justification "<reason>" [--expiry-days 30]
+//
+// Resolves JFrog credentials the same way the hook does (JFROG_URL/JF_ACCESS_TOKEN, or
+// `jf config export`), then POSTs to the waivers endpoint, printing a single JSON result
+// line (for the agent to render a confirmation) and exiting non-zero on failure.
 
 import process from "node:process";
 
 import { resolveCredentials } from "./helpers/credentials.mjs";
 
-const WAIVERS_PATH = "/ui/api/v1/unifiedpolicy/api/v1/waivers";
+// The Unified Policy service's own REST path. NOT "/ui/api/v1/unifiedpolicy/api/v1/waivers":
+// that is the UI reverse-proxy route, which authenticates a browser session and answers a
+// bearer-token client with a bare 403 "Forbidden" — measured against a live JPD, and the
+// reason this helper had never successfully created a waiver.
+const WAIVERS_PATH = "/unifiedpolicy/api/v1/waivers";
 const DEFAULT_EXPIRY_DAYS = 30;
 const TIMEOUT_MS = 10000;
 
-// The action type every skill-governance block is evaluated under. Unified Policy's
-// PolicyActionType has exactly one value today; new ones flow in server-side, so this stays a
-// constant here rather than becoming another flag the agent has to fill in correctly.
-const WAIVER_ACTION_TYPE = "certify_to_gate";
+// The action type every skill-governance block is evaluated under. A skill is governed by
+// `use_skill`, which is STAGE-LESS by contract: Unified Policy's use_skill action schema
+// rejects any key beyond `type`, so sending a `stage` here is a 400 rather than a field the
+// server ignores. This is not certify_to_gate — that is the AppTrust release-gate action, and
+// a skill block carries no application/stage/gate to waive against.
+const WAIVER_ACTION_TYPE = "use_skill";
 
 // WaiverCreatePayload caps justification at 255 characters. The text is the user's own reason,
 // relayed by a model that may pad it, so truncate here: a waiver that records a clipped reason
@@ -58,18 +66,24 @@ function expiresAtInDays(days) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const applicationKey = args["application-key"];
-const stageKey = args["stage-key"];
-const stageGate = args["stage-gate"];
+const projectKey = args["project"];
+const skillName = args["skill-name"];
+const skillVersion = args["skill-version"];
+const skillRepoPath = args["skill-repo-path"];
 const justification = args["justification"];
 const expiryDays = Number.isFinite(Number(args["expiry-days"]))
   ? Number(args["expiry-days"])
   : DEFAULT_EXPIRY_DAYS;
 
+// Every identity field is mandatory. Unified Policy matches a skill-scoped waiver on the
+// whole triple (see buildSkillScopeCondition, which returns a never-matching predicate when
+// any of them is empty), so a waiver created from a partial identity would be accepted,
+// approved, and then match nothing — which reads to the user as access granted.
 const missing = [
-  ["application-key", applicationKey],
-  ["stage-key", stageKey],
-  ["stage-gate", stageGate],
+  ["project", projectKey],
+  ["skill-name", skillName],
+  ["skill-version", skillVersion],
+  ["skill-repo-path", skillRepoPath],
   ["justification", justification],
 ].filter(([, v]) => !v || !String(v).trim());
 if (missing.length > 0) {
@@ -89,21 +103,28 @@ if (!credentials) {
 
 const expiresAt = expiresAtInDays(expiryDays);
 const url = credentials.baseUrl.replace(/\/+$/, "") + WAIVERS_PATH;
-// Unified Policy's Phase II waiver model (see its v012 migration, which backfilled the old
-// flat {application_key, stage_key, stage_gate} scope into this shape and archived the legacy
-// table): a mandatory `action` carrying the stage/gate, plus a `scopes` array discriminated on
-// `type`, of which exactly one `organization` entry is required. The stage moved out of the
-// scope and into the action — omitting `stage` there would waive ALL stages and gates, which is
-// far broader than the block the user is responding to.
+// A skill waiver: `action.type: use_skill` with NO stage, plus exactly one `organization`
+// scope whose sub_scope is the waiver-only `skill` type — project_keys narrowing WHERE, and
+// skills[] naming WHICH package by the identity triple UP matches on.
+//
+// Deliberately not an `application` sub_scope with application_keys. That is the AppTrust
+// shape, and it is the wrong one here twice over: a skill block has no application key (the
+// governance report echoes the skill NAME into applicationKey, which is not the same thing),
+// and an application-scoped waiver would not match a use_skill evaluation at all.
+//
+// A `project` sub_scope would also be accepted by the API and would match, but it waives
+// use_skill for EVERY skill in the project — far broader than the block the user is
+// responding to. Name the skill.
 const payload = {
-  action: {
-    type: WAIVER_ACTION_TYPE,
-    stage: { key: stageKey, gate: stageGate },
-  },
+  action: { type: WAIVER_ACTION_TYPE },
   scopes: [
     {
       type: "organization",
-      sub_scope: { type: "application", application_keys: [applicationKey] },
+      sub_scope: {
+        type: "skill",
+        project_keys: [projectKey],
+        skills: [{ name: skillName, version: skillVersion, repo_path: skillRepoPath }],
+      },
     },
   ],
   expires_at: expiresAt,
@@ -142,7 +163,7 @@ try {
       status: "pending",
       requestedExpirationDays: expiryDays,
       expiresAt,
-      scope: { applicationKey, stageKey, stageGate },
+      scope: { projectKey, skillName, skillVersion, skillRepoPath },
       waiver: body,
     },
     0,
