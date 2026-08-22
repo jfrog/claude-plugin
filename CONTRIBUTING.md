@@ -43,7 +43,7 @@ This downloads the pinned upstream tarball and replaces the contents of `skills/
 
 - [ ] `node scripts/validate-claude-plugin.mjs` passes.
 - [ ] `claude plugin validate` passes (before directory submission or major releases).
-- [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) when the plugin changes.
+- [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) — required on every PR to `main`, not only when the plugin itself changes.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
 - [ ] If the skill tree changed: `pin` in `.github/scripts/sync-skills-vendor.json` matches the upstream tag the new tree was generated from.
 - [ ] Smoke-test: `claude --plugin-dir .` from the repo root.
@@ -56,12 +56,11 @@ Compliance: [Anthropic Software Directory Terms](https://support.claude.com/en/a
 
 ## Releasing
 
-To cut a release:
+Every merge to `main` releases, so **every** PR to `main` must bump `.version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) — including docs- and CI-only changes. That manifest is the only place the version lives.
 
-1. In your PR, bump `.version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json). That manifest is the only place the version lives.
-2. Merge to `main`. Every push to `main` compares the manifest version against the latest release tag: if the version is newer, a release proceeds; if it matches the latest tag, the workflow fails with a clear "already released" error; if it is older, it fails with a revert warning.
+Every push to `main` compares the manifest version against the latest release tag: if the version is newer, a release proceeds; if it matches the latest tag, the workflow fails with a clear "already released" error; if it is older, it fails with a revert warning.
 
-The bump is reviewed in the PR that makes it. Merging without bumping the manifest fails the release rather than silently skipping or re-tagging a shipped version.
+A merge without a bump therefore turns `Release` red. That is by design, not a bug to work around: the bump is reviewed in the PR that makes it, and failing loudly beats silently skipping a release or re-tagging a shipped version.
 
 The workflow reads the version from the manifest, runs the same plugin-layout check as the `validate` PR workflow, packages the tracked files at `HEAD` (minus `.github/`) into `release.zip`, and creates the `vX.Y.Z` tag as part of publishing the GitHub Release.
 
@@ -69,6 +68,7 @@ Two things to know before changing it:
 
 - Validation runs inside the release job. `validate.yml` triggers on the same push, but as an independent workflow, so it can be red while a release still goes out. Re-running its check in the release job is what actually gates the release on it.
 - The tag is created by the release, not before it. `gh release create --target` does both in one API call, so a failed run can't leave a tag behind with no release attached to it.
+- The rollback step only runs when the gate itself passed. A gate failure means the version was already released by an earlier run, and deleting that release would destroy something already shipped.
 
 ## Reporting Issues
 
