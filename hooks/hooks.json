@@ -15,7 +15,7 @@
             "async": true,
             "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --version >/dev/null 2>&1 || true",
             "timeout": 180,
-            "statusMessage": "Warming the JFrog Agent Guard cache…"
+            "statusMessage": "Refreshing the JFrog Agent Guard cache from the registry (once per session; the per-tool hooks then resolve offline)…"
           }
         ]
       }
@@ -27,7 +27,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
+            "command": "npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
             "timeout": 20
           }
         ]
@@ -39,7 +39,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
+            "command": "npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
             "timeout": 20
           }
         ]

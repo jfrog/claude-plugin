@@ -18,6 +18,17 @@
 //      127 and agent-guard never runs — nothing inside agent-guard could have blocked. Only
 //      the `|| exit 2` in the hook converts that into a block.
 //
+// Registry traffic is split deliberately between the two kinds of hook, and the split is what
+// makes an unpinned package spec affordable:
+//
+//   * The async SessionStart pre-warm resolves ONLINE (no --prefer-offline). It is the one
+//     network round trip per session, and the only thing that pulls a newly published
+//     agent-guard into the npx cache. Remove it and --prefer-offline below would pin the user
+//     to whatever release they happened to download first.
+//   * The two governed hooks resolve with --prefer-offline, so a warm cache satisfies them with
+//     no network at all. PreToolUse fires on every Read, and a ~1s registry round trip per Read
+//     is a tax the session pays thousands of times for a resolution the pre-warm already did.
+//
 // `"shell": "bash"` is set explicitly so Windows-without-Git-Bash fails LOUDLY (Claude Code
 // raises a visible "requires bash … Install Git for Windows" hook error) instead of silently:
 // left to default, such a machine runs the command under PowerShell, where `||` is a parse
@@ -146,6 +157,17 @@ check("the npx cache pre-warm is async so it never delays session start", () => 
   assert(warm.command.includes("--version"), "the pre-warm must use --version: it exits before mode selection, so it needs no credentials and has no side effects");
   assert(warm.command.trimEnd().endsWith("|| true"), "a failed pre-warm must never fail the session: it is only a cache warm");
   assert(!warm.command.includes("--enforce-skill"), "the pre-warm must not run an enforcement pass");
+  assert(!warm.command.includes("--prefer-offline"),
+    "the pre-warm MUST hit the registry: it is the only thing that refreshes the cache to the latest agent-guard, which is what makes the governed hooks' --prefer-offline safe");
+});
+
+check("the governed hooks resolve from cache, so no Read pays a registry round trip", () => {
+  for (const event of GOVERNED_EVENTS) {
+    for (const h of hooksFor(event)) {
+      assert(h.command.includes("--prefer-offline"),
+        `${event} must pass --prefer-offline; PreToolUse fires on every Read and a per-call registry lookup is a ~1s tax on each one`);
+    }
+  }
 });
 
 for (const event of GOVERNED_EVENTS) {
