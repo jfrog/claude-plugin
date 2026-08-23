@@ -17,6 +17,12 @@
 //      non-blocking (the tool call proceeds). So when npx itself is missing the shell returns
 //      127 and agent-guard never runs — nothing inside agent-guard could have blocked. Only
 //      the `|| exit 2` in the hook converts that into a block.
+//   3. `|| exit 2` only fires if the command EXITS. A hook that runs past its timeout is killed,
+//      and Claude Code treats a timed-out hook as non-blocking — so a hang is a silent ALLOW,
+//      the exact opposite of the intended verdict. npm's defaults hang for a long time on a
+//      dead registry (70s to a refused port; over 10 minutes to one that drops packets), so
+//      the fetch is bounded inline, below the hook timeout, to keep every infrastructure
+//      failure on the exit-2 path rather than the timeout path.
 //
 // Registry traffic is split deliberately between the two kinds of hook, and the split is what
 // makes an unpinned package spec affordable:
@@ -159,6 +165,8 @@ check("the npx cache pre-warm is async so it never delays session start", () => 
   assert(!warm.command.includes("--enforce-skill"), "the pre-warm must not run an enforcement pass");
   assert(!warm.command.includes("--prefer-offline"),
     "the pre-warm MUST hit the registry: it is the only thing that refreshes the cache to the latest agent-guard, which is what makes the governed hooks' --prefer-offline safe");
+  assert(!warm.command.includes("npm_config_fetch"),
+    "the pre-warm must keep npm's default retries and fetch timeout: it is async, has 180s and ends in || true, so retrying through a flaky network costs nobody anything — the tight bounds belong only where a hang would fail open");
 });
 
 check("the governed hooks resolve from cache, so no Read pays a registry round trip", () => {
@@ -177,7 +185,10 @@ for (const event of GOVERNED_EVENTS) {
     const h = hs[0];
     assert(h.shell === "bash", `${event} must pin shell: "bash" so a missing Git Bash fails loudly`);
     assert(!("args" in h), `${event} must use shell form: npx is a .cmd shim on Windows and cannot be spawned in exec form`);
-    assert(h.command.startsWith("npx "), `${event} must invoke npx directly, got: ${h.command}`);
+    // Leading `NAME=value` assignments are the fetch bounds asserted further down; past them
+    // the very first word must still be npx, with no wrapper or interpreter in between.
+    assert(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S+ )*npx /.test(h.command),
+      `${event} must invoke npx directly, got: ${h.command}`);
     assert(!h.command.includes("command -v"), `${event} must not have a PATH fast path: a hijackable agent-guard earlier on PATH would win`);
     assert(!/\.mjs["' ]*--enforce-skill|node .*enforce-skill/.test(h.command), `${event} must not route through a plugin wrapper script`);
     assert(h.command.includes("--enforce-skill") && h.command.includes("--client claude-code"),
@@ -200,6 +211,40 @@ check("PreToolUse matcher covers Skill and Read", () => {
 check("both governed hooks allow for an npx cold start (timeout >= 20)", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) assert((h.timeout ?? 0) >= 20, `${event} timeout ${h.timeout} < 20`);
+  }
+});
+
+// Failing closed is a race the command has to win. `|| exit 2` blocks; a hook that overruns its
+// timeout is killed and treated as NON-blocking, so the slowest possible failure of the command
+// must land strictly inside the hook timeout or the block silently becomes an allow.
+//
+// npm's defaults lose that race. fetch-retries is 2 with a 10s/60s backoff and fetch-timeout is
+// 300s, measured as 70s against a refused port and over ten minutes against a registry that
+// drops packets — both far past a 20s hook. With retries off and a 10s fetch timeout the same
+// three failure modes take 0.26s (DNS failure), 0.38s (refused) and 10.4s (dropped packets),
+// each exiting non-zero and therefore each reaching `|| exit 2`.
+//
+// Retries are 0 deliberately. A single retry doubles the dropped-packet case to ~21s, which
+// pushes it back over the hook timeout and turns the block into a silent allow — a retry here
+// buys resilience by giving up the guarantee. Resilience lives in the SessionStart pre-warm
+// instead: it keeps npm's defaults, has 180s, is async, and can block nobody.
+//
+// 10s still clears a legitimate cold start. A fully cold cache resolved and ran agent-guard in
+// 13.0s end to end with this bound applied, so no individual request approached the limit.
+check("the governed hooks bound their fetch so a dead registry exits before the hook times out", () => {
+  for (const event of GOVERNED_EVENTS) {
+    for (const h of hooksFor(event)) {
+      const retries = /npm_config_fetch_retries=(\d+)/.exec(h.command);
+      const fetchTimeout = /npm_config_fetch_timeout=(\d+)/.exec(h.command);
+      assert(retries, `${event} must set npm_config_fetch_retries: npm's default of 2 backs off 10s then 60s`);
+      assert(fetchTimeout, `${event} must set npm_config_fetch_timeout: npm's default is 300000ms, 15x the hook timeout`);
+      assert(Number(retries[1]) === 0,
+        `${event} sets fetch_retries=${retries[1]}; every retry multiplies the worst case and can push it past the hook timeout`);
+      const worstCaseMs = Number(fetchTimeout[1]) * (Number(retries[1]) + 1);
+      const hookTimeoutMs = (h.timeout ?? 0) * 1000;
+      assert(worstCaseMs * 2 <= hookTimeoutMs,
+        `${event}: a stalled fetch can run ${worstCaseMs}ms against a ${hookTimeoutMs}ms hook timeout. Half the hook budget must stay free for process startup, or the fail-closed exit 2 degrades into a fail-open timeout`);
+    }
   }
 });
 
