@@ -48,7 +48,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const waiverHelperPath = path.join(repoRoot, "scripts", "governance", "request-waiver.mjs");
 const hooks = JSON.parse(readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
 const sandbox = mkdtempSync(path.join(tmpdir(), "enforce-hook-"));
 const binDir = path.join(sandbox, "bin");
@@ -193,8 +192,13 @@ for (const event of GOVERNED_EVENTS) {
     assert(!/\.mjs["' ]*--enforce-skill|node .*enforce-skill/.test(h.command), `${event} must not route through a plugin wrapper script`);
     assert(h.command.includes("--enforce-skill") && h.command.includes("--client claude-code"),
       `${event} must pass --enforce-skill --client claude-code`);
-    assert(h.command.includes('--waiver-helper "${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs"'),
-      `${event} must pass the waiver helper rooted at \${CLAUDE_PLUGIN_ROOT}`);
+    // The waiver request is agent-guard's own `--request-waiver` command now. The plugin used to
+    // hand it the path to a Node helper it shipped; that script and its credential resolver are
+    // gone, so passing the flag again would name a file that no longer exists.
+    assert(!h.command.includes("--waiver-helper"),
+      `${event} must not pass --waiver-helper: agent-guard owns the waiver flow`);
+    assert(!h.command.includes("request-waiver"),
+      `${event} must not reference a plugin-side waiver script`);
     assert(h.command.trimEnd().endsWith("|| exit 2"),
       `${event} must end in "|| exit 2": exit 1/127 are NON-blocking, so nothing else fails closed`);
     assert(h.command.includes(RELEASES_REGISTRY),
@@ -266,8 +270,8 @@ await check("forwards stdin verbatim and hands agent-guard the expected argv", a
   assert(seen.stdin === payload, `stdin altered: ${seen.stdin}`);
   assert(seen.argv.includes("--enforce-skill"), `argv missing --enforce-skill: ${seen.argv}`);
   assert(seen.argv[seen.argv.indexOf("--client") + 1] === "claude-code", `bad --client: ${seen.argv}`);
-  assert(seen.argv[seen.argv.indexOf("--waiver-helper") + 1] === waiverHelperPath,
-    `bad --waiver-helper: ${seen.argv}`);
+  assert(!seen.argv.includes("--waiver-helper"),
+    `--waiver-helper must not reach agent-guard; it owns the waiver flow: ${seen.argv}`);
   assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
     `must default to the releases registry: ${seen.argv}`);
   assert(seen.argv.includes("@jfrog/agent-guard"),

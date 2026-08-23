@@ -27,7 +27,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code || exit 2",
             "timeout": 20
           }
         ]
@@ -39,7 +39,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code --waiver-helper \"${CLAUDE_PLUGIN_ROOT}/scripts/governance/request-waiver.mjs\" || exit 2",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code || exit 2",
             "timeout": 20
           }
         ]
