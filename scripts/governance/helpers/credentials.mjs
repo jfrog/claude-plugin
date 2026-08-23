@@ -2,8 +2,14 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Shared JFrog credential resolution, used by the SessionStart injector and the
-// skills-governance hooks. Zero dependencies.
+// JFrog credential resolution for the governance waiver helper — its only
+// consumer is governance/request-waiver.mjs, which agent-guard invokes through
+// the --waiver-helper argument in hooks/hooks.json.
+//
+// Environment variables are tried before the JFrog CLI on purpose: the CLI is
+// optional for credential resolution (see README "Authentication"), so an
+// env-only setup with no configured server must still be able to file a waiver.
+// Zero dependencies.
 
 import { execFileSync } from "node:child_process";
 import process from "node:process";
