@@ -204,7 +204,7 @@ await check("forwards stdin verbatim and hands agent-guard the expected argv", a
   assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
     `must default to the releases registry: ${seen.argv}`);
   assert(seen.argv.includes("@jfrog/agent-guard"),
-    `unpinned package spec expected when no version override is set: ${seen.argv}`);
+    `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
 });
 
 await check("forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)", async () => {
@@ -234,11 +234,13 @@ await check("npx missing entirely still fails closed (exit 2, not 127)", async (
   assert(r.code === 2, `a missing npx must fail closed with exit 2, got exit=${r.code}`);
 });
 
-await check("JFROG_AGENT_GUARD_REPO redirects the registry, JFROG_AGENT_GUARD_VERSION pins the version", async () => {
+await check("JFROG_AGENT_GUARD_REPO redirects the registry, and nothing can pin the version", async () => {
   const record = stubNpx({ stdout: "" });
   const r = runHookCommand(commandFor("PreToolUse"), "{}", {
     extraEnv: {
       JFROG_AGENT_GUARD_REPO: "https://example.invalid/npm/dev/",
+      // Set on purpose: the pin mechanism was deliberately removed, so this must have NO effect.
+      // If a future edit reintroduces it, this check turns that back into a visible failure.
       JFROG_AGENT_GUARD_VERSION: "0.0.0-master.1.gabc",
     },
   });
@@ -246,16 +248,28 @@ await check("JFROG_AGENT_GUARD_REPO redirects the registry, JFROG_AGENT_GUARD_VE
   const seen = JSON.parse(readFileSync(record, "utf8"));
   assert(seen.argv[seen.argv.indexOf("--registry") + 1] === "https://example.invalid/npm/dev/",
     `registry override ignored: ${seen.argv}`);
-  assert(seen.argv.includes("@jfrog/agent-guard@0.0.0-master.1.gabc"),
-    `version override not appended to the package spec: ${seen.argv}`);
+  assert(seen.argv.includes("@jfrog/agent-guard"),
+    `the package spec must stay plain "@jfrog/agent-guard": ${seen.argv}`);
+  assert(!seen.argv.some((a) => a.startsWith("@jfrog/agent-guard@")),
+    `an env var pinned the version of a security control: ${seen.argv}`);
 });
 
-await check("an unset version override leaves the spec unpinned rather than adding a bare @", async () => {
-  const record = stubNpx({ stdout: "" });
-  runHookCommand(commandFor("PreToolUse"), "{}", { extraEnv: { JFROG_AGENT_GUARD_VERSION: "" } });
-  const seen = JSON.parse(readFileSync(record, "utf8"));
-  assert(seen.argv.includes("@jfrog/agent-guard"),
-    `an empty version must not produce "@jfrog/agent-guard@": ${seen.argv}`);
+// agent-guard IS the enforcement. Letting the environment choose which build of it runs inverts
+// the trust relationship: the machine being governed would pick its own governor, and could hold
+// itself on a release that predates a policy. Every JFrog client invokes agent-guard unpinned;
+// the registry stays overridable (air-gapped / self-hosted mirrors), the version never does.
+await check("no hook can pin the agent-guard version", () => {
+  for (const [event, entries] of Object.entries(hooks.hooks)) {
+    for (const h of entries.flatMap((entry) => entry.hooks ?? [])) {
+      if (!h.command.includes("@jfrog/agent-guard")) continue;
+      assert(!h.command.includes("JFROG_AGENT_GUARD_VERSION"),
+        `${event} reintroduced a version-pin override: ${h.command}`);
+      assert(!/@jfrog\/agent-guard@/.test(h.command),
+        `${event} hard-pins the agent-guard version: ${h.command}`);
+      assert(h.command.includes("JFROG_AGENT_GUARD_REPO"),
+        `${event} dropped the registry override, which air-gapped installs depend on: ${h.command}`);
+    }
+  }
 });
 
 rmSync(sandbox, { recursive: true, force: true });
