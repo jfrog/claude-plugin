@@ -1,6 +1,7 @@
 # Copyright (c) JFrog Ltd. 2026
 #
-# Cuts a GitHub Release when the version file on main is newer than the latest tag.
+# Cuts a GitHub Release when `.claude-plugin/plugin.json` on main is newer than the
+# latest tag. Equal or older versions fail the job (they do not no-op).
 # Full flow and rationale: CONTRIBUTING.md#releasing
 name: Release
 
@@ -20,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 here, plus `git fetch --tags` in the gate below, so the gate sees every
-      # release tag — including one created by a prior run that was still queued behind this one.
+      # release tag — including one created by a prior run that this run was queued behind.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -46,9 +47,8 @@ jobs:
           git fetch --tags origin
           # grep exits 1 when no tag matches, which pipefail would turn into a step failure —
           # an empty LATEST is the legitimate first-release case, handled just below.
-          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1) || LATEST=""
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -1)
           if [ -z "$LATEST" ]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "No prior release tag — v${VERSION} will be the first release"
             exit 0
           fi
@@ -63,7 +63,6 @@ jobs:
             echo "::error::.claude-plugin/plugin.json version ${VERSION} is older than the latest release ${LATEST} — check for an accidental revert"
             exit 1
           fi
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "Version ${VERSION} is newer than ${LATEST} — proceeding with release"
 
       - uses: actions/setup-node@v5
