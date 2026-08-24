@@ -119,8 +119,54 @@ async function main() {
   }
 
   await validateSkills(repoRoot, pluginName);
+  await validateMarketplace(pluginName);
 
   summarizeAndExit();
+}
+
+async function validateMarketplace(pluginName) {
+  const marketplacePath = path.join(repoRoot, ".claude-plugin", "marketplace.json");
+  const marketplace = await readJsonFile(
+    marketplacePath,
+    "Marketplace manifest (.claude-plugin/marketplace.json)"
+  );
+  if (!marketplace) {
+    return;
+  }
+
+  if (typeof marketplace.name !== "string" || !pluginNamePattern.test(marketplace.name)) {
+    addError(
+      `"name" in marketplace.json must be lowercase and use only alphanumerics, hyphens, and periods.`
+    );
+  }
+  if (!marketplace.owner || typeof marketplace.owner.name !== "string" || !marketplace.owner.name) {
+    addError(`marketplace.json is missing owner.name`);
+  }
+  if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
+    addError(`marketplace.json must list at least one plugin`);
+    return;
+  }
+
+  let foundThisPlugin = false;
+  for (const [index, entry] of marketplace.plugins.entries()) {
+    const label = `marketplace.json plugins[${index}]`;
+    if (!entry || typeof entry !== "object") {
+      addError(`${label} must be an object`);
+      continue;
+    }
+    if (typeof entry.name !== "string" || !pluginNamePattern.test(entry.name)) {
+      addError(`${label}.name must be a kebab-case plugin identifier`);
+    }
+    if (entry.source === undefined || entry.source === null || entry.source === "") {
+      addError(`${label} is missing source`);
+    }
+    if (entry.name === pluginName) {
+      foundThisPlugin = true;
+    }
+  }
+  if (!foundThisPlugin) {
+    addError(`marketplace.json must include a plugin entry named "${pluginName}"`);
+  }
 }
 
 function summarizeAndExit() {

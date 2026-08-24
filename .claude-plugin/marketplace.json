@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "jfrog-plugins",
+  "description": "Official JFrog plugins for Claude Code.",
+  "owner": {
+    "name": "JFrog Ltd.",
+    "email": "devrel@jfrog.com",
+    "url": "https://jfrog.com"
+  },
+  "plugins": [
+    {
+      "name": "jfrog",
+      "displayName": "JFrog",
+      "description": "Official JFrog plugin. Connect Claude Code to JFrog to manage, secure, and govern your software supply chain. Give agents the context to build secure, compliant software.",
+      "source": ".",
+      "homepage": "https://jfrog.com",
+      "author": {
+        "name": "JFrog Ltd.",
+        "email": "devrel@jfrog.com",
+        "url": "https://jfrog.com"
+      }
+    }
+  ]
+}
