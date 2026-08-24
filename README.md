@@ -99,7 +99,7 @@ The hook soft-fails (never breaks the session): missing project key, Agent Guard
 
 The plugin can now automatically route the packages your AI agent installs (npm, PyPI, Maven, Go, Docker, Helm, and NuGet) through your organization's JFrog Artifactory instead of public registries. This keeps agent-driven dependency installs inside your organization's governance perimeter.
 
-Agent Package Resolution is in preview and opt-in. To get started:
+Agent Package Resolution is in preview. The shipped template enables it with empty repository bindings (nothing is routed until Consent Enable or an admin adds `defaultGlobalRepos`). To get started:
 
 - **Users:** see the [User Guide](docs/package-resolution-user-guide.md).
 - **Admins:** see the [Admin Guide](docs/package-resolution-admin-guide.md).

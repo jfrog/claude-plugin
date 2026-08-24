@@ -33,15 +33,10 @@ export const EXIT_REGISTRY_DISABLED = 2;
  * @returns {string | undefined}
  */
 function envLookup(env, newName, oldName) {
-  // Match hasJfrogUrlTokenEnv: empty / whitespace newName falls back to oldName.
-  const pick = (name) => {
-    if (!name) return undefined;
-    const value = env[name];
-    if (typeof value !== "string") return undefined;
-    const trimmed = value.trim();
-    return trimmed || undefined;
-  };
-  return pick(newName) || pick(oldName);
+  const raw = env[newName] ?? (oldName ? env[oldName] : undefined);
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
 }
 
 /**
