@@ -53,22 +53,6 @@ claude plugin marketplace update claude-plugins-official
 claude plugin install jfrog@claude-plugins-official
 ```
 
-### Install from the JFrog marketplace
-
-This repository also ships a one-plugin marketplace, so install does not depend on unrelated catalog entries:
-
-```bash
-claude plugin marketplace add jfrog/claude-plugin
-claude plugin install jfrog@jfrog-plugins
-```
-
-Inside Claude Code:
-
-```
-/plugin marketplace add jfrog/claude-plugin
-/plugin install jfrog@jfrog-plugins
-```
-
 ### Local development
 
 From a clone of this repository (repository root **is** the plugin root):
@@ -172,8 +156,7 @@ When an MCP server requires a sensitive configuration, the agent cannot set the 
 
 `Invalid schema: plugins.0.source`, unrecognized `displayName`, and similar messages with numeric indices come from Claude Code rejecting the **entire** `claude-plugins-official` catalog because some other plugin's entry is invalid or your local copy is stale. They are not a diagnosis of this plugin.
 
-1. Run `claude plugin marketplace update claude-plugins-official` and retry `/plugin install jfrog@claude-plugins-official`.
-2. If the official catalog is still unusable, install from the JFrog marketplace instead (see [Install from the JFrog marketplace](#install-from-the-jfrog-marketplace)).
+Run `claude plugin marketplace update claude-plugins-official` to re-fetch the catalog, then retry `/plugin install jfrog@claude-plugins-official`.
 
 For Agent Guard / MCP Registry issues, see the [JFrog MCP Registry troubleshooting guide](https://docs.jfrog.com/ai-ml/docs/mcp-registry-troubleshooting).
 
