@@ -35,7 +35,7 @@ How to install, verify, and recover the JFrog plugin for Claude Code. This docum
 
 | Variable | Typical form | Used for |
 | --- | --- | --- |
-| `JFROG_URL` | Full platform URL (`https://mycompany.jfrog.io`, no trailing `/`) | Plugin MCP and some skill paths. Prefer `jf config` for skills. |
+| `JFROG_PLATFORM_URL` | Host only (`mycompany.jfrog.io`, no `https://`, no trailing `/`) | Plugin MCP (`https://${JFROG_PLATFORM_URL}/mcp`) and related resolution. Prefer `jf config` for skills. |
 | `JFROG_ACCESS_TOKEN` | JWT access token | Some headless flows. Not a substitute for `jf config` in skills. |
 
 **Do not treat env vars as a recovery shortcut after a failed `/jfrog-init`:**
@@ -59,7 +59,7 @@ Complete all rows before considering the install done.
 
 | Symptom | Do this | Do **not** do this |
 | --- | --- | --- |
-| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_URL` alone will register MCP. |
+| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_PLATFORM_URL` alone will register MCP. |
 | `/jfrog-init` stopped at CLI/auth | Follow the skill prompt (`jf config add`, web login, or token path), then **re-run `/jfrog-init`**. | Skip init and only export env vars. |
 | Plugin MCP file missing | Reinstall/update the JFrog plugin, restart, re-run `/jfrog-init`. | Hand-edit unrelated MCP configs. |
 | Placeholder URL still in plugin `mcp.json` | Fix `jf config` for the intended server, re-run `/jfrog-init` so it can substitute the URL. | Reinstall the plugin when the detector says auth/URL resolution failed. |
