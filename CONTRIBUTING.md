@@ -47,7 +47,7 @@ This downloads the pinned upstream tarball and replaces the contents of `skills/
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
 - [ ] If the skill tree changed: `pin` in `.github/scripts/sync-skills-vendor.json` matches the upstream tag the new tree was generated from.
 - [ ] Smoke-test: `claude --plugin-dir .` from the repo root.
-- [ ] Install/recovery docs: README links [docs/shared-install-and-verify.md](docs/shared-install-and-verify.md), includes a **Verify** section, and does not contradict it on init/env/restart/recovery.
+- [ ] Install/recovery docs: README links [docs/install-and-verify.md](docs/install-and-verify.md), includes a **Verify** section, and does not contradict it on init/env/restart/recovery. Do not send readers to another plugin repository for those steps.
 
 ### Submitting to the Claude plugin directory
 
