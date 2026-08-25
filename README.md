@@ -12,6 +12,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook + Skill** | Agent Package Resolution (Preview) | Automatically route packages installed by the AI agent through your organization's JFrog Artifactory, keeping agent-driven installs inside your Curation, Xray, and governance perimeter. |
+| **Hook** | Plugin MCP rewrite | On SessionStart / FileChanged, rewrite discovered installed-plugin `.mcp.json` files through Agent Guard (`--rewrite-mcp-json`) so stdio MCP entries launch via `@jfrog/agent-guard`. |
 | **Skill** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 ---
@@ -82,6 +83,26 @@ If you have never configured the JFrog CLI on this machine:
    jf config add
    ```
 3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
+
+---
+
+## Plugin MCP rewrite (Agent Guard)
+
+On every Claude Code `SessionStart` (and when `installed_plugins.json` / `known_marketplaces.json` change), the plugin discovers installed-plugin `.mcp.json` paths under `$CLAUDE_CONFIG_DIR/plugins` (default `~/.claude`) — including marketplace live trees for string-source plugins — plus this plugin's own `.mcp.json` when present, and runs `npx @jfrog/agent-guard --rewrite-mcp-json` against those paths. Stdio MCP entries are rewritten to launch through Agent Guard; remote `url` / `http` / `sse` / `ws` entries are left unchanged. A fast SessionStart helper registers FileChanged `watchPaths` (skipped when the kill switch is on); the slower rewrite hook emits `/reload-plugins` guidance via `additionalContext` when files were updated.
+
+The hook soft-fails (never breaks the session): missing project key, Agent Guard gate failure, or rewrite errors log and exit 0. Concurrent rewrite invocations share a lock file and soft-skip with status `busy`.
+
+| Env | Purpose |
+| --- | --- |
+| `JF_AGENT_REWRITE_MCP_JSON_DISABLE=1` | Kill switch — skip rewrite and watchPaths registration |
+| `JF_PROJECT` / `JFROG_PROJECT` | Project key (also inferred from existing `_JF_ARGS project=` in discovered mcp.json) |
+| `JF_SERVER` / `JFROG_SERVER_ID` | Optional server ID for the gate / `--server` |
+| `JFROG_AGENT_GUARD_VERSION` | Override pinned `@jfrog/agent-guard` version |
+| `JFROG_AGENT_GUARD_REPO` | Private npm registry for `@jfrog/agent-guard` |
+| `JFROG_AGENT_GUARD_BIN` | Local Agent Guard binary (skips npx) |
+| `JF_ALIGN_MCP_JSON_ROOTS` | Override discovery roots (POSIX `:`/`,`; Windows `;`/`,`) |
+| `JF_REWRITE_MCP_JSON_LOCK_PATH` | Override rewrite concurrency lock file path |
+| `CLAUDE_CONFIG_DIR` | Claude config root (default `~/.claude`) |
 
 ---
 
