@@ -27,7 +27,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"${JF_AGENT_GUARD_ENFORCE_DEADLINE:-$(($(date +%s) + 25))}\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"$(($(date +%s) + 25))\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
             "timeout": 30
           }
         ]
@@ -39,7 +39,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"${JF_AGENT_GUARD_ENFORCE_DEADLINE:-$(($(date +%s) + 25))}\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"$(($(date +%s) + 25))\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
             "timeout": 30
           }
         ]

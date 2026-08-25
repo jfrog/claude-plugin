@@ -208,11 +208,18 @@ check("both governed hooks allow for an npx cold start (timeout >= 30)", () => {
 // `${VAR:-default}` and not a bare assignment: a bare `VAR=v cmd` beats the inherited
 // environment, which would silently disable the documented operator override for clients whose
 // hook timeout differs from Claude Code's.
-check("the governed hooks pass an absolute deadline, not a duration", () => {
+// Computed FRESH every invocation, with no `${VAR:-…}` fallback. An absolute instant is valid for
+// one run only: if the variable were ever inherited — a shell profile, a parent process, a CI
+// runner — every skill would read a deadline in the past, get too little time to evaluate, and
+// (before the cold-start carve-out) deny. The operator knob is the DURATION form, which agent-guard
+// takes as a lower bound; a deadline is not something an operator can usefully pin.
+check("the governed hooks compute the deadline fresh, with no inheritable fallback", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
-      const m = /JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\{JF_AGENT_GUARD_ENFORCE_DEADLINE:-\$\(\(\$\(date \+%s\) \+ (\d+)\)\)\}"/.exec(h.command);
-      assert(m, `${event} must pass JF_AGENT_GUARD_ENFORCE_DEADLINE as \${VAR:-$(($(date +%s) + N))}`);
+      const m = /JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\(\(\$\(date \+%s\) \+ (\d+)\)\)"/.exec(h.command);
+      assert(m, `${event} must pass JF_AGENT_GUARD_ENFORCE_DEADLINE="$(($(date +%s) + N))"`);
+      assert(!/JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\{/.test(h.command),
+        `${event} must not allow an inherited deadline: a stale absolute instant pins every invocation to the past`);
       const budgetS = Number(m[1]);
       assert(budgetS < (h.timeout ?? 0),
         `${event}: the deadline (+${budgetS}s) must fall inside the ${h.timeout}s hook timeout, or agent-guard is killed before it can write its verdict`);
@@ -220,23 +227,6 @@ check("the governed hooks pass an absolute deadline, not a duration", () => {
   }
 });
 
-// Failing closed is a race the command has to win. `|| exit 2` blocks; a hook that overruns its
-// timeout is killed and treated as NON-blocking, so the slowest possible failure of the command
-// must land strictly inside the hook timeout or the block silently becomes an allow.
-//
-// npm's defaults lose that race. fetch-retries is 2 with a 10s/60s backoff and fetch-timeout is
-// 300s, measured as 70s against a refused port and over ten minutes against a registry that
-// drops packets — both far past a 20s hook. With retries off and a 10s fetch timeout the same
-// three failure modes take 0.26s (DNS failure), 0.38s (refused) and 10.4s (dropped packets),
-// each exiting non-zero and therefore each reaching `|| exit 2`.
-//
-// Retries are 0 deliberately. A single retry doubles the dropped-packet case to ~21s, which
-// pushes it back over the hook timeout and turns the block into a silent allow — a retry here
-// buys resilience by giving up the guarantee. Resilience lives in the SessionStart pre-warm
-// instead: it keeps npm's defaults, has 180s, is async, and can block nobody.
-//
-// 10s still clears a legitimate cold start. A fully cold cache resolved and ran agent-guard in
-// 13.0s end to end with this bound applied, so no individual request approached the limit.
 check("the governed hooks bound their fetch so a dead registry gives up quickly", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
