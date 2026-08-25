@@ -212,9 +212,26 @@ check("PreToolUse matcher covers Skill and Read", () => {
     `matcher does not cover both: ${entry?.matcher}`);
 });
 
-check("both governed hooks allow for an npx cold start (timeout >= 20)", () => {
+check("both governed hooks allow for an npx cold start (timeout >= 30)", () => {
   for (const event of GOVERNED_EVENTS) {
-    for (const h of hooksFor(event)) assert((h.timeout ?? 0) >= 20, `${event} timeout ${h.timeout} < 20`);
+    for (const h of hooksFor(event)) assert((h.timeout ?? 0) >= 30, `${event} timeout ${h.timeout} < 30`);
+  }
+});
+
+// The hook, not agent-guard, owns the enforcement deadline. agent-guard's own default (12s) is
+// set in a different repo and cannot see the npm bound in front of it, so leaving the two to be
+// chosen independently is what let 10s + 12s exceed a 20s hook and turn a block into a silent
+// allow. Supplying the budget here makes one number drive both.
+//
+// `${VAR:-default}` and not a bare assignment: a bare `VAR=v cmd` beats the inherited
+// environment, which would silently disable the documented operator override for clients whose
+// hook timeout differs from Claude Code's.
+check("the governed hooks supply agent-guard's budget without defeating the operator override", () => {
+  for (const event of GOVERNED_EVENTS) {
+    for (const h of hooksFor(event)) {
+      assert(/JF_AGENT_GUARD_ENFORCE_TIMEOUT="\$\{JF_AGENT_GUARD_ENFORCE_TIMEOUT:-\d+s\}"/.test(h.command),
+        `${event} must pass JF_AGENT_GUARD_ENFORCE_TIMEOUT="\${JF_AGENT_GUARD_ENFORCE_TIMEOUT:-<n>s}" so the hook owns the deadline and the operator can still override it`);
+    }
   }
 });
 
@@ -246,8 +263,17 @@ check("the governed hooks bound their fetch so a dead registry exits before the 
         `${event} sets fetch_retries=${retries[1]}; every retry multiplies the worst case and can push it past the hook timeout`);
       const worstCaseMs = Number(fetchTimeout[1]) * (Number(retries[1]) + 1);
       const hookTimeoutMs = (h.timeout ?? 0) * 1000;
-      assert(worstCaseMs * 2 <= hookTimeoutMs,
-        `${event}: a stalled fetch can run ${worstCaseMs}ms against a ${hookTimeoutMs}ms hook timeout. Half the hook budget must stay free for process startup, or the fail-closed exit 2 degrades into a fail-open timeout`);
+      // The three terms are ADDITIVE, not overlapping: the client's timer starts when it spawns
+      // this command, npm runs to completion first, and only then does agent-guard start its own
+      // budget. "Half the hook budget stays free" used to stand in for agent-guard's share, but
+      // it is a guess at a number this file can now read directly out of the command it ships.
+      const budget = /JF_AGENT_GUARD_ENFORCE_TIMEOUT:-(\d+)s\}/.exec(h.command);
+      assert(budget, `${event} must supply JF_AGENT_GUARD_ENFORCE_TIMEOUT so this bound can be checked`);
+      const budgetMs = Number(budget[1]) * 1000;
+      const RENDER_HEADROOM_MS = 5_000; // writing the card and flushing stdout after the verdict
+      const needMs = worstCaseMs + budgetMs + RENDER_HEADROOM_MS;
+      assert(needMs <= hookTimeoutMs,
+        `${event}: a stalled fetch (${worstCaseMs}ms) plus agent-guard's budget (${budgetMs}ms) plus render headroom (${RENDER_HEADROOM_MS}ms) is ${needMs}ms against a ${hookTimeoutMs}ms hook timeout. They are additive, and overrunning the hook is NOT a block — the client kills it and treats that as allowed`);
     }
   }
 });
