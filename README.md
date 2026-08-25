@@ -2,6 +2,8 @@
 
 JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices, and Agent Guard.
 
+> **Install flow:** [Shared install, verify, and recovery guide](docs/shared-install-and-verify.md) — canonical cross-harness rules. This README covers **Claude Code-only** steps.
+
 ## Features
 
 The JFrog plugin provides the following capabilities, grouped by component:
@@ -54,6 +56,8 @@ claude plugin marketplace update claude-plugins-official
 claude plugin install jfrog@claude-plugins-official
 ```
 
+Then run **`/jfrog-init`** to complete the shared readiness walk, **restart Claude Code**, and verify below.
+
 ### Local development
 
 From a clone of this repository (repository root **is** the plugin root):
@@ -83,6 +87,21 @@ If you have never configured the JFrog CLI on this machine:
    jf config add
    ```
 3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
+
+Setting `JFROG_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one — see [shared env-var rules](docs/shared-install-and-verify.md#environment-variables--what-actually-helps).
+
+---
+
+## Verify
+
+Verification is a required install step, not a troubleshooting fallback:
+
+1. `/plugins` → **Installed** — the JFrog plugin is listed.
+2. Run **`/jfrog-init`** — it completes without blocking errors. Restart Claude Code if it changed the MCP config.
+3. `jf rt ping` — succeeds against your configured server.
+
+If a check fails, fix the step `/jfrog-init` reports and re-run it, then restart. See the
+[shared recovery playbook](docs/shared-install-and-verify.md#recovery-playbook).
 
 ---
 
