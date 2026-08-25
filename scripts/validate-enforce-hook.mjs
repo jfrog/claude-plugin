@@ -3,42 +3,21 @@
 // Licensed under the Apache License, Version 2.0
 // https://www.apache.org/licenses/LICENSE-2.0
 
-// Tests the skill-enforcement hook wiring. hooks.json invokes agent-guard DIRECTLY via npx —
-// no plugin-side wrapper script, so there is no plugin code in the enforcement path at all.
-// Two properties make that safe, and both are asserted by executing the real command string
-// out of hooks.json against a stub npx:
+// Tests the skill-enforcement hook wiring by executing the real command string out of hooks.json
+// against a stub npx. Two facts are load-bearing:
 //
-//   1. npx ONLY. There is deliberately no `command -v agent-guard` fast path: an agent-guard
-//      earlier on PATH could be anything, whereas npx always resolves the package from the
-//      pinned registry. Dropping that branch removes the hijack vector AND removes the
-//      `command -v` that used to force POSIX-only syntax.
-//   2. `|| exit 2` is load-bearing and cannot be replaced by an exit code inside agent-guard.
-//      Claude Code blocks a PreToolUse hook on exit 2 ONLY; 1, 127 and spawn failures are all
-//      non-blocking (the tool call proceeds). So when npx itself is missing the shell returns
-//      127 and agent-guard never runs — nothing inside agent-guard could have blocked. Only
-//      the `|| exit 2` in the hook converts that into a block.
-//   3. `|| exit 2` only fires if the command EXITS. A hook that runs past its timeout is killed,
-//      and Claude Code treats a timed-out hook as non-blocking — so a hang is a silent ALLOW,
-//      the exact opposite of the intended verdict. npm's defaults hang for a long time on a
-//      dead registry (70s to a refused port; over 10 minutes to one that drops packets), so
-//      the fetch is bounded inline, below the hook timeout, to keep every infrastructure
-//      failure on the exit-2 path rather than the timeout path.
+//   1. Exit 2 is the ONLY code Claude Code treats as a blocking PreToolUse error. 1, 127, spawn
+//      failures and a hook killed at the timeout are all non-blocking. So the hook must pass
+//      agent-guard's exit code through untouched: agent-guard's 2 blocks, everything else fails
+//      OPEN — which is the requirement, since a user who cannot run the guard is not governed by
+//      it and blocking them enforces nothing.
+//   2. npx ONLY, with no `command -v agent-guard` fast path: a binary earlier on PATH could be
+//      anything, whereas npx resolves the package from the pinned registry.
 //
-// Registry traffic is split deliberately between the two kinds of hook, and the split is what
-// makes an unpinned package spec affordable:
-//
-//   * The async SessionStart pre-warm resolves ONLINE (no --prefer-offline). It is the one
-//     network round trip per session, and the only thing that pulls a newly published
-//     agent-guard into the npx cache. Remove it and --prefer-offline below would pin the user
-//     to whatever release they happened to download first.
-//   * The two governed hooks resolve with --prefer-offline, so a warm cache satisfies them with
-//     no network at all. PreToolUse fires on every Read, and a ~1s registry round trip per Read
-//     is a tax the session pays thousands of times for a resolution the pre-warm already did.
-//
-// `"shell": "bash"` is set explicitly so Windows-without-Git-Bash fails LOUDLY (Claude Code
-// raises a visible "requires bash … Install Git for Windows" hook error) instead of silently:
-// left to default, such a machine runs the command under PowerShell, where `||` is a parse
-// error that exits 1 — non-blocking, i.e. governance silently fails OPEN.
+// Registry traffic is split between the hooks: the async SessionStart pre-warm resolves ONLINE and
+// is the only thing that pulls a newly published agent-guard into the cache; the governed hooks use
+// --prefer-offline, because PreToolUse fires on every Read and a round trip per Read is a tax paid
+// thousands of times for a resolution the pre-warm already did.
 
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -186,7 +165,7 @@ for (const event of GOVERNED_EVENTS) {
     assert(!("args" in h), `${event} must use shell form: npx is a .cmd shim on Windows and cannot be spawned in exec form`);
     // Leading `NAME=value` assignments are the fetch bounds asserted further down; past them
     // the very first word must still be npx, with no wrapper or interpreter in between.
-    assert(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S+ )*npx /.test(h.command),
+    assert(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|\S+) )*npx /.test(h.command),
       `${event} must invoke npx directly, got: ${h.command}`);
     assert(!h.command.includes("command -v"), `${event} must not have a PATH fast path: a hijackable agent-guard earlier on PATH would win`);
     assert(!/\.mjs["' ]*--enforce-skill|node .*enforce-skill/.test(h.command), `${event} must not route through a plugin wrapper script`);
@@ -199,8 +178,11 @@ for (const event of GOVERNED_EVENTS) {
       `${event} must not pass --waiver-helper: agent-guard owns the waiver flow`);
     assert(!h.command.includes("request-waiver"),
       `${event} must not reference a plugin-side waiver script`);
-    assert(h.command.trimEnd().endsWith("|| exit 2"),
-      `${event} must end in "|| exit 2": exit 1/127 are NON-blocking, so nothing else fails closed`);
+    // Inverted deliberately: infrastructure failures fail OPEN by requirement, so the hook must
+    // NOT remap agent-guard's exit code. Only agent-guard can tell a broken environment from a
+    // policy decision, and `|| exit 2` made every one of them look like a block.
+    assert(!/\|\|\s*exit\s+2/.test(h.command),
+      `${event} must not force exit 2: npx/install/credential failures fail open, and agent-guard's own exit 2 already blocks`);
     assert(h.command.includes(RELEASES_REGISTRY),
       `${event} must default to the releases registry, so the artifact is the published one`);
   });
@@ -226,11 +208,14 @@ check("both governed hooks allow for an npx cold start (timeout >= 30)", () => {
 // `${VAR:-default}` and not a bare assignment: a bare `VAR=v cmd` beats the inherited
 // environment, which would silently disable the documented operator override for clients whose
 // hook timeout differs from Claude Code's.
-check("the governed hooks supply agent-guard's budget without defeating the operator override", () => {
+check("the governed hooks pass an absolute deadline, not a duration", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
-      assert(/JF_AGENT_GUARD_ENFORCE_TIMEOUT="\$\{JF_AGENT_GUARD_ENFORCE_TIMEOUT:-\d+s\}"/.test(h.command),
-        `${event} must pass JF_AGENT_GUARD_ENFORCE_TIMEOUT="\${JF_AGENT_GUARD_ENFORCE_TIMEOUT:-<n>s}" so the hook owns the deadline and the operator can still override it`);
+      const m = /JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\{JF_AGENT_GUARD_ENFORCE_DEADLINE:-\$\(\(\$\(date \+%s\) \+ (\d+)\)\)\}"/.exec(h.command);
+      assert(m, `${event} must pass JF_AGENT_GUARD_ENFORCE_DEADLINE as \${VAR:-$(($(date +%s) + N))}`);
+      const budgetS = Number(m[1]);
+      assert(budgetS < (h.timeout ?? 0),
+        `${event}: the deadline (+${budgetS}s) must fall inside the ${h.timeout}s hook timeout, or agent-guard is killed before it can write its verdict`);
     }
   }
 });
@@ -252,28 +237,14 @@ check("the governed hooks supply agent-guard's budget without defeating the oper
 //
 // 10s still clears a legitimate cold start. A fully cold cache resolved and ran agent-guard in
 // 13.0s end to end with this bound applied, so no individual request approached the limit.
-check("the governed hooks bound their fetch so a dead registry exits before the hook times out", () => {
+check("the governed hooks bound their fetch so a dead registry gives up quickly", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
       const retries = /npm_config_fetch_retries=(\d+)/.exec(h.command);
       const fetchTimeout = /npm_config_fetch_timeout=(\d+)/.exec(h.command);
-      assert(retries, `${event} must set npm_config_fetch_retries: npm's default of 2 backs off 10s then 60s`);
-      assert(fetchTimeout, `${event} must set npm_config_fetch_timeout: npm's default is 300000ms, 15x the hook timeout`);
-      assert(Number(retries[1]) === 0,
-        `${event} sets fetch_retries=${retries[1]}; every retry multiplies the worst case and can push it past the hook timeout`);
-      const worstCaseMs = Number(fetchTimeout[1]) * (Number(retries[1]) + 1);
-      const hookTimeoutMs = (h.timeout ?? 0) * 1000;
-      // The three terms are ADDITIVE, not overlapping: the client's timer starts when it spawns
-      // this command, npm runs to completion first, and only then does agent-guard start its own
-      // budget. "Half the hook budget stays free" used to stand in for agent-guard's share, but
-      // it is a guess at a number this file can now read directly out of the command it ships.
-      const budget = /JF_AGENT_GUARD_ENFORCE_TIMEOUT:-(\d+)s\}/.exec(h.command);
-      assert(budget, `${event} must supply JF_AGENT_GUARD_ENFORCE_TIMEOUT so this bound can be checked`);
-      const budgetMs = Number(budget[1]) * 1000;
-      const RENDER_HEADROOM_MS = 5_000; // writing the card and flushing stdout after the verdict
-      const needMs = worstCaseMs + budgetMs + RENDER_HEADROOM_MS;
-      assert(needMs <= hookTimeoutMs,
-        `${event}: a stalled fetch (${worstCaseMs}ms) plus agent-guard's budget (${budgetMs}ms) plus render headroom (${RENDER_HEADROOM_MS}ms) is ${needMs}ms against a ${hookTimeoutMs}ms hook timeout. They are additive, and overrunning the hook is NOT a block — the client kills it and treats that as allowed`);
+      assert(retries && Number(retries[1]) === 0,
+        `${event} must set npm_config_fetch_retries=0: npm's default of 2 backs off 10s then 60s`);
+      assert(fetchTimeout, `${event} must set npm_config_fetch_timeout: npm's default is 300000ms`);
     }
   }
 });
@@ -318,17 +289,28 @@ await check("empty stdout means allow (no output, exit 0)", async () => {
   assert(r.code === 0 && r.stdout === "", `exit=${r.code} stdout=${r.stdout}`);
 });
 
-await check("agent-guard failure yields exit exactly 2 (fail closed)", async () => {
+// Infrastructure failures fail OPEN, by product requirement: a user who cannot run the guard is
+// not governed by it, and blocking them enforces nothing except their inability to work. The hook
+// therefore does NOT convert failures into exit 2 — agent-guard's own exit code is the verdict,
+// and only agent-guard can tell a broken environment from a policy decision.
+await check("an agent-guard failure fails OPEN, not closed", async () => {
   stubNpx({ stdout: "", exitCode: 1 });
   const r = runHookCommand(commandFor("PreToolUse"), "{}");
-  assert(r.code === 2, `expected the fail-closed exit 2, got exit=${r.code}`);
+  assert(r.code !== 2, `exit 2 blocks; an internal failure must fail open, got exit=${r.code}`);
 });
 
-// The case that justifies `|| exit 2` over an exit code inside agent-guard: with npx absent,
-// agent-guard never runs, so only the hook itself can turn 127 into a block.
-await check("npx missing entirely still fails closed (exit 2, not 127)", async () => {
+await check("npx missing entirely fails OPEN", async () => {
   const r = runHookCommand(commandFor("PreToolUse"), "{}", { isolate: true });
-  assert(r.code === 2, `a missing npx must fail closed with exit 2, got exit=${r.code}`);
+  assert(r.code !== 2, `a missing npx must not block, got exit=${r.code}`);
+});
+
+// The other half of the same rule, and the one that must never regress: when agent-guard DOES
+// reach a decision to block, the hook has to pass it through untouched. Nothing in the command
+// may swallow, remap, or re-raise its exit code.
+await check("agent-guard's own exit 2 still blocks", async () => {
+  stubNpx({ stdout: "", exitCode: 2 });
+  const r = runHookCommand(commandFor("PreToolUse"), "{}");
+  assert(r.code === 2, `agent-guard blocked; the hook must propagate exit 2, got exit=${r.code}`);
 });
 
 await check("JFROG_AGENT_GUARD_REPO redirects the registry, and nothing can pin the version", async () => {

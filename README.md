@@ -16,16 +16,14 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | **Skill** | Agent Guard | Claude manages MCPs through the JFrog Agent Guard. Through the Agent Guard you can discover, install, configure, update, and remove MCP servers from the JFrog AI Catalog approved for your project, and authenticate to remote HTTP MCPs via OAuth, API key, or bearer token. |
 
 > [!IMPORTANT]
-> **Skill Governance fails closed.** Enforcement that can be bypassed by unplugging the network
-> is not enforcement, so when the Agent Guard cannot be *run at all* — `npx` missing, the registry
-> unreachable, no connectivity — the hook **blocks** rather than allowing. This applies to every
-> `Read` as well as every `Skill`, since both are governed.
+> **Skill Governance blocks on policy, not on infrastructure.** A skill is blocked when your
+> organization's JFrog policies say so, or when the Agent Guard reaches the check and cannot
+> complete it in time. If the Agent Guard cannot be *run at all* — `npx` missing, the registry
+> unreachable, no JFrog server configured — the action is **allowed**: a machine that cannot run
+> the guard is not governed by it, and blocking there would stop work without enforcing anything.
 >
-> In normal use this is invisible: the Agent Guard is fetched once per session by an asynchronous
-> `SessionStart` hook and every subsequent check resolves from the local npm cache, so a machine
-> that reached the registry once keeps working without further network access. A user who is
-> *entitled to nothing* is not affected either — the Agent Guard returns "allow" for an
-> unconfigured or unentitled user, so no extra setup is needed to opt out of the feature.
+> A user who is entitled to nothing is unaffected either way: the Agent Guard returns "allow" for
+> an unconfigured or unentitled user, so no setup is needed to opt out of the feature.
 
 ---
 
@@ -35,8 +33,8 @@ Before installing, make sure you have:
 
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
-- **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard). Required, not optional, once Skill Governance is active: the hook fails closed, so a missing `npx` blocks every `Skill` and `Read`.
-- **Git Bash on Windows** — required for the Skill Governance hook, which runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook reports a `requires bash` error on every skill invocation. Not needed on macOS or Linux.
+- **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard). Without it Skill Governance cannot run, and governed actions are allowed unchecked.
+- **Git Bash on Windows** — the Skill Governance hook runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook cannot run and governed actions are allowed unchecked. Not needed on macOS or Linux.
 - **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve credentials/server ID from the JFrog CLI instead of `JFROG_URL`/`JFROG_ACCESS_TOKEN` env vars. Older CLIs don't support the `--format` flag used by `jf config show` for this.
