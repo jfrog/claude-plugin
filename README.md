@@ -2,8 +2,6 @@
 
 JFrog plugin for [Claude Code](https://claude.com/product/claude-code): artifact management, security scanning, and supply-chain best practices, and Agent Guard.
 
-> **Install, verify, and recovery:** [docs/install-and-verify.md](docs/install-and-verify.md).
-
 ## Features
 
 The JFrog plugin provides the following capabilities, grouped by component:
@@ -88,7 +86,7 @@ If you have never configured the JFrog CLI on this machine:
    ```
 3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
 
-Setting `JFROG_PLATFORM_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one — see [environment variables](docs/install-and-verify.md#environment-variables).
+Setting `JFROG_PLATFORM_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one. Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
 
 ---
 
@@ -100,8 +98,13 @@ Verification is a required install step, not a troubleshooting fallback:
 2. Run **`/jfrog-init`** — it completes without blocking errors. Restart Claude Code if it changed the MCP config.
 3. `jf rt ping` — succeeds against your configured server.
 
-If a check fails, fix the step `/jfrog-init` reports and re-run it, then restart. See the
-[recovery playbook](docs/install-and-verify.md#recovery-playbook).
+If a check fails, fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+
+| Symptom | Do this | Do **not** do this |
+| --- | --- | --- |
+| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_PLATFORM_URL` alone will register MCP. |
+| `/jfrog-init` stopped at CLI/auth | Follow the skill prompt, then **re-run `/jfrog-init`**. | Skip init and only export env vars. |
+| Install fails with marketplace schema errors | Run `claude plugin marketplace update claude-plugins-official` and retry. | Treat `plugins.0.source` as a diagnosis of this plugin. |
 
 ---
 
