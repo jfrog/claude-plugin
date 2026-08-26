@@ -19,6 +19,31 @@ success criterion). You reached this file because the harness is Claude Code
 
 `mcpServers`
 
+## Gateway entry shape (Install → Step 3.5, Exit 3 only)
+
+When Step 3.5's resolver exits 3, the entry is the JSON it emitted, written
+under `mcpServers` keyed by `spec.packageName`:
+
+```json
+{
+  "mcpServers": {
+    "<spec.packageName>": {
+      "type": "http",
+      "url": "<JPD_URL>/mcp/<JFROG_PROJECT_KEY>/<spec.packageName>"
+    }
+  }
+}
+```
+
+The `url` shape is shown so you can recognize a correct entry — never assemble
+it yourself. Copy the resolver's `entry=` line verbatim.
+
+No `command`, `args`, `_JF_ARGS`, or `env` — the Gateway holds the upstream's
+credentials, so nothing from Step 3 is written here and Step 5's `--login` does
+not run. This is the ONLY case in which you may author a non-stdio entry; see
+[gateway-routing.md](gateway-routing.md). Every other install writes the stdio
+Agent Guard entry from [harness-common.md](harness-common.md).
+
 ## Value reference (env / secrets)
 
 Plain `${VAR_NAME}`, resolved from the shell that launched Claude Code. For

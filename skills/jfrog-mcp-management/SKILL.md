@@ -8,7 +8,7 @@ description: >-
 compatibility: >-
   Requires network access to the npm registry and the JFrog platform, and
   ~/.jfrog/ write access for OAuth login and cache cleanup.
-allowed-tools: Bash(claude mcp list) Bash(cursor agent mcp list) Bash(codex mcp list) Bash(opencode mcp list) Read Edit Write
+allowed-tools: Bash(claude mcp list) Bash(cursor agent mcp list) Bash(codex mcp list) Bash(opencode mcp list) Bash(node "${CLAUDE_SKILL_DIR}/scripts/jfrog-resolve-mcp-route.mjs"*) Read Edit Write
 metadata:
   role: workflow
 ---
@@ -201,9 +201,58 @@ exports/persists the variable, see the harness file and
 [references/persisting-env-vars.md](references/persisting-env-vars.md). (VS Code
 prompts for `inputs` values on first start — no shell export.)
 
+## Step 3.5: Resolve the route — Agent Guard or Remote MCP Gateway
+
+Run this ALWAYS, before writing anything, and branch on the EXIT CODE — never
+on the text it prints:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/scripts/jfrog-resolve-mcp-route.mjs" \
+  --mcp <spec.packageName> \
+  --project <JFROG_PROJECT_KEY> \
+  --server <SERVER_ID> \
+  --config <absolute path to the Step 1 target config file> \
+  --remote ; rc=$?; true
+```
+
+Pass `${CLAUDE_SKILL_DIR}` through verbatim — the shell expands it, and the
+pre-approval in this skill's `allowed-tools` only matches that spelling.
+Substitute every other value for real; never pass a literal `<...>`. **`rc=$?`
+is mandatory** — a bare `; true` discards the exit code, and then every route
+silently reads as legacy.
+
+- Pass `--remote` ONLY when the Step 2 `--inspect` output had a
+  `spec.mcpServerType.remote` section. Omit it for local MCPs.
+- Omit `--server` on the `JFROG_URL`+token env path, exactly as in Step 2.
+
+| `$rc` | Route | What to do |
+| --- | --- | --- |
+| `0` | Agent Guard | Continue to Steps 4, 4a, and 5 unchanged. |
+| `3` | Gateway | Take the Gateway branch in Step 4, then Step 4a, and SKIP Step 5. stdout carries `entry=<JSON>` — write that JSON verbatim. |
+| `4` | already configured | Tell the user this MCP already routes through the Gateway in that config file, and write NOTHING. Skip Steps 4, 4a, and 5. |
+| anything else | Agent Guard | Treat exactly as `0`. |
+
+The script only decides — it never edits a file. It is deliberately silent
+about WHY a remote MCP is not Gateway-eligible: do not infer a reason, do not
+offer the user one, and never re-run it hoping for a different verdict. The
+route is decided once, here, at add time, and is never revisited at runtime.
+
+Read [references/gateway-routing.md](references/gateway-routing.md) only if you
+need the contract behind this step (what gates it, how the URLs are built) —
+the table above is enough to act on.
+
 ## Step 4: Write the config entry
 
-Write the Agent Guard entry into the target config from Step 1, following
+**On the Gateway route (Step 3.5 Exit 3)**, write the emitted `entry=` JSON
+verbatim as the value of the `<spec.packageName>` key under `mcpServers` — no
+`command`, no `args`, no `_JF_ARGS`, no Agent Guard flags, and no `env` block
+(the Gateway holds the upstream's headers and credentials, so Step 3's inputs
+are not written into this entry). The shape is in
+[references/harness-claude.md](references/harness-claude.md). Then do Step 4a
+and skip Step 5. Ignore the rest of this step.
+
+**On the Agent Guard route (Exit 0, or any other code)**, write the Agent Guard
+entry into the target config from Step 1, following
 [references/harness-common.md](references/harness-common.md): it has the exact
 JSON (`type: stdio`, `command`/`args`/`_JF_ARGS`), the per-harness top-level key
 (`mcpServers` for Claude Code/Cursor, `servers` for VS Code) and env/secret
@@ -212,7 +261,10 @@ reference syntax, and the VS Code `inputs[]` shape.
 Guardrails (identical everywhere):
 - `--yes` and `--registry <URL>` MUST precede `@jfrog/agent-guard` in `args`
   (else npx hits the default registry → 404 / no-TTY hang).
-- `"type": "stdio"` only — never `"http"`, `"sse"`, or a top-level `"url"`.
+- `"type": "stdio"` only, unless Step 3.5 routed this MCP to the Gateway: a
+  `"type": "http"` entry is permitted ONLY on Exit 3, and only as the exact
+  JSON the resolver emitted. `"sse"`, and any top-level `"url"` you compose
+  yourself, stay forbidden — they bypass the Agent Guard AND the Gateway.
 - `--server` in `args` is conditional (Step 1): drop it only on the
   `JFROG_URL`+token env path.
 - If a required value reference is unset, the server fails / tool calls fail at
@@ -245,6 +297,10 @@ Then tell the user:
 Run ONLY for OAuth-style remote MCPs — `--inspect` showed a `remote` section
 with `type: "http"` AND Step 4 wrote no static auth header into `env`. Skip for
 local MCPs and for remote MCPs whose auth comes from a static token in `env`.
+
+**Skipped entirely on the Step 3.5 Gateway route (Exit 3).** The Gateway runs
+the OAuth flow itself, so `--login` must not run — it would authenticate a
+local Agent Guard proxy that this install never spawns.
 
 `--login` opens the browser, runs OAuth, caches tokens in
 `~/.jfrog/jfrogmcp.conf.json`. Warn the user "I'm going to open your browser to

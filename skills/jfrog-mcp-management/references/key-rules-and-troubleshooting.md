@@ -14,9 +14,13 @@ Reference for the Install and List flows of the `jfrog-mcp-management` skill.
   agent guard flags. Both `--yes` and `--registry` MUST precede the package
   name or `npx` falls back to the default registry (404) and may block on a
   no-TTY prompt.
-- **Always `"type": "stdio"`** pointing at `npx @jfrog/agent-guard`, even for
-  remote-only catalog MCPs (the agent guard proxies them). `"http"`, `"sse"`,
-  or a top-level `"url"` bypass the agent guard.
+- **`"type": "stdio"` pointing at `npx @jfrog/agent-guard`** is the only entry
+  shape you may author, even for remote-only catalog MCPs (the agent guard
+  proxies them). The single exception is the JFrog Remote MCP Gateway: a
+  `"type": "http"` entry is allowed ONLY when Install → Step 3.5's resolver
+  exited 3, and only as the exact JSON it emitted (see
+  [gateway-routing.md](gateway-routing.md)). `"sse"`, and any top-level `"url"`
+  you compose yourself, bypass both the agent guard and the Gateway.
 - `_JF_ARGS` is **only** for the config entry the agent launches at session
   start (the `env` of the entry written when adding an MCP); MUST contain
   `project=<JFROG_PROJECT_KEY>&mcp=<PACKAGE_NAME>`. NEVER pass `_JF_ARGS` to

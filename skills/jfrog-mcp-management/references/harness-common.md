@@ -83,8 +83,12 @@ case; harnesses whose config is not JSON differ — e.g. **Codex** uses TOML wit
 }
 ```
 
-- `"type": "stdio"` always — never `"http"`, `"sse"`, or a top-level `"url"`
-  (those bypass the Agent Guard).
+- `"type": "stdio"` always, with one exception: on Claude Code, Install →
+  Step 3.5 may route a remote MCP to the JFrog Remote MCP Gateway, whose entry
+  is `"type": "http"` with a `url` — permitted only as the exact JSON that
+  step's resolver emitted (see [gateway-routing.md](gateway-routing.md)).
+  Never `"sse"`, and never a top-level `"url"` you compose yourself: those
+  bypass the Agent Guard AND the Gateway.
 - `--yes` and `--registry <URL>` MUST precede `@jfrog/agent-guard` in `args`.
 - `--server <ID>` in `args` is conditional: drop both array elements only on the
   `JFROG_URL`+token env path (see [agent-guard-common.md](agent-guard-common.md)).
