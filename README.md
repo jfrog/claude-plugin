@@ -26,7 +26,7 @@ Before installing, make sure you have:
 - **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard).
 - **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
-- **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve credentials/server ID from the JFrog CLI instead of `JFROG_PLATFORM_URL`/`JFROG_ACCESS_TOKEN` env vars. Older CLIs don't support the `--format` flag used by `jf config show` for this.
+- **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve the credentials/server ID from the JFrog CLI configuration. Older CLIs don't support the `--format` flag used by `jf config show` for this.
 - **JFrog project** (optional) — If you want to use the Agent Guard feature.
 
 ---
@@ -98,7 +98,9 @@ Verification is a required install step, not a troubleshooting fallback:
 2. Run **`/jfrog-init`** — it completes without blocking errors. Restart Claude Code if it changed the MCP config.
 3. `jf rt ping` — succeeds against your configured server.
 
-If a check fails, fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+If a check fails, see [Recovery](#recovery). Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+
+## Recovery
 
 | Symptom | Do this | Do **not** do this |
 | --- | --- | --- |
