@@ -32,16 +32,8 @@ const debug = (message) => {
 };
 
 // New JFROG_* env vars take precedence over the legacy JF_* names.
-const env = (newName, oldName) => {
-  const pick = (name) => {
-    if (!name) return undefined;
-    const raw = process.env[name];
-    if (typeof raw !== "string") return undefined;
-    const trimmed = raw.trim();
-    return trimmed || undefined;
-  };
-  return pick(newName) ?? pick(oldName);
-};
+const env = (newName, oldName) =>
+  process.env[newName] ?? (oldName ? process.env[oldName] : undefined);
 
 const enabled = (reason) => {
   process.stdout.write(`Enabled: ${reason}\n`);
