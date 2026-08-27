@@ -134,7 +134,10 @@ check("hooks.json keeps the package-resolution SessionStart hook byte-identical"
 });
 
 check("the npx cache pre-warm is async so it never delays session start", () => {
-  const warm = hooks.hooks.SessionStart[0].hooks[1];
+  // Found by content, not position: other features add SessionStart hooks, and an index pinned the
+  // check to whichever hook happened to sit there.
+  const warm = (hooks.hooks.SessionStart[0].hooks ?? [])
+    .find((h) => (h.command ?? "").includes("@jfrog/agent-guard") && (h.command ?? "").includes("--version"));
   assert(warm, "the agent-guard pre-warm SessionStart hook is missing");
   assert(warm.async === true, "the pre-warm MUST be async, or a 33 MB cold download blocks session start");
   assert(warm.shell === "bash", "the pre-warm uses bash syntax and must pin shell: bash");
