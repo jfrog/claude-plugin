@@ -1,0 +1,4 @@
+# Normalize line endings so checkouts are byte-identical on Linux / macOS /
+# Windows. Plugin scripts are ESM .mjs and must stay LF regardless of the
+# contributor's platform or core.autocrlf setting.
+*.mjs text eol=lf
