@@ -12,7 +12,9 @@
 //      OPEN — which is the requirement, since a user who cannot run the guard is not governed by
 //      it and blocking them enforces nothing.
 //   2. npx ONLY, with no `command -v agent-guard` fast path: a binary earlier on PATH could be
-//      anything, whereas npx resolves the package from the pinned registry.
+//      anything, whereas npx resolves the package from the configured registry. The registry is
+//      fixed (overridable only by JFROG_AGENT_GUARD_REPO); the package spec deliberately is not,
+//      because a check below forbids pinning the version of a security control.
 //
 // Registry traffic is split between the hooks: the async SessionStart pre-warm resolves ONLINE and
 // is the only thing that pulls a newly published agent-guard into the cache; the governed hooks use
@@ -44,6 +46,11 @@ const RELEASES_REGISTRY = "https://releases.jfrog.io/artifactory/api/npm/coding-
 const GOVERNED_EVENTS = ["PreToolUse", "UserPromptExpansion"];
 // Claude Code resolves `shell: "bash"` itself; here we only need A bash to execute the same
 // string. /bin/bash exists on macOS and Linux, which is where this validator runs.
+//
+// COVERAGE GAP, deliberate: CI runs on Ubuntu, so nothing here exercises Windows. A Windows
+// machine without Git Bash has no bash to resolve, the command never runs, and the action is
+// allowed unchecked (README lists Git for Windows as a prerequisite for that reason). Reproducing
+// it needs a Windows runner, not a different constant here.
 const BASH = "/bin/bash";
 
 const failures = [];
@@ -63,7 +70,7 @@ function hooksFor(event) {
 
 // A stub npx that records the argv it was handed and the stdin it received, then replays a
 // canned result. Installed as `npx` so the hook command finds it first on PATH.
-function stubNpx({ stdout = "", exitCode = 0 }) {
+function stubNpx({ stdout = "", exitCode = 0, sleepMs = 0 }) {
   const record = path.join(sandbox, "record.json");
   rmSync(record, { force: true });
   const script = `#!/usr/bin/env node
@@ -72,8 +79,10 @@ let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
   fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin: input }));
-  if (${JSON.stringify(stdout)}) process.stdout.write(${JSON.stringify(stdout)});
-  process.exit(${exitCode});
+  setTimeout(() => {
+    if (${JSON.stringify(stdout)}) process.stdout.write(${JSON.stringify(stdout)});
+    process.exit(${exitCode});
+  }, ${sleepMs});
 });
 `;
   const p = path.join(binDir, "npx");
@@ -86,7 +95,7 @@ process.stdin.on("end", () => {
 // hooks.json handed to bash -c, hook event JSON on stdin, with the env Claude Code supplies.
 // `isolate` drops the stub bin dir from PATH, which is how the "npx is not installed at all"
 // case is reproduced.
-function runHookCommand(command, payload, { extraEnv = {}, isolate = false } = {}) {
+function runHookCommand(command, payload, { extraEnv = {}, isolate = false, timeoutMs = 30_000 } = {}) {
   // An ABSOLUTE bash: the PATH below is deliberately minimal (it is how the "npx is not
   // installed" case is reproduced), so `bash` by name would not resolve and spawnSync would
   // fail with status null before the command ever ran.
@@ -94,8 +103,8 @@ function runHookCommand(command, payload, { extraEnv = {}, isolate = false } = {
     input: Buffer.from(payload),
     encoding: "buffer",
     // No check should ever reach the network; a hang means the stub was bypassed, and failing
-    // fast beats waiting on a real npx download.
-    timeout: 30_000,
+    // fast beats waiting on a real npx download. The timeout-kill check lowers this deliberately.
+    timeout: timeoutMs,
     env: {
       // Deliberately minimal: node stays reachable for the stub's shebang, and nothing else —
       // in particular no real npx — is on it.
@@ -105,7 +114,12 @@ function runHookCommand(command, payload, { extraEnv = {}, isolate = false } = {
       ...extraEnv,
     },
   });
-  if (result.error) throw new Error(`could not run the hook command via ${BASH}: ${result.error.message}`);
+  // ETIMEDOUT is not a failure to run — it IS the killed-at-the-ceiling outcome the timeout check
+  // asks for, and spawnSync reports it the same way it reports a genuine spawn error. Everything
+  // else still throws, so a real spawn problem cannot masquerade as a passing check.
+  if (result.error && result.error.code !== "ETIMEDOUT") {
+    throw new Error(`could not run the hook command via ${BASH}: ${result.error.message}`);
+  }
   return {
     code: result.status,
     stdout: result.stdout ? result.stdout.toString() : "",
@@ -205,17 +219,17 @@ check("both governed hooks allow for an npx cold start (timeout >= 30)", () => {
 
 // The hook, not agent-guard, owns the enforcement deadline. agent-guard's own default (12s) is
 // set in a different repo and cannot see the npm bound in front of it, so leaving the two to be
-// chosen independently is what let 10s + 12s exceed a 20s hook and turn a block into a silent
-// allow. Supplying the budget here makes one number drive both.
+// chosen independently let the sum overrun the hook timeout and turn a block into a silent allow.
+// Supplying the budget here makes one number drive both.
 //
-// `${VAR:-default}` and not a bare assignment: a bare `VAR=v cmd` beats the inherited
-// environment, which would silently disable the documented operator override for clients whose
-// hook timeout differs from Claude Code's.
-// Computed FRESH every invocation, with no `${VAR:-…}` fallback. An absolute instant is valid for
-// one run only: if the variable were ever inherited — a shell profile, a parent process, a CI
-// runner — every skill would read a deadline in the past, get too little time to evaluate, and
-// (before the cold-start carve-out) deny. The operator knob is the DURATION form, which agent-guard
-// takes as a lower bound; a deadline is not something an operator can usefully pin.
+// Computed FRESH every invocation, as a BARE prefix assignment with no `${VAR:-…}` fallback. An
+// absolute instant is valid for one run only: `:-` substitutes solely when the variable is unset
+// or empty, so an exported value — a shell profile, a parent process, a CI runner — would pin
+// every later invocation to a deadline already in the past. agent-guard then floors the budget at
+// minEnforcementBudget, which a real JPD cannot answer within, and denies every governed skill
+// permanently. A bare prefix assignment beats the inherited environment, which is what makes it
+// safe. The operator knob is the DURATION form, which agent-guard takes as a lower bound; an
+// absolute deadline is not something an operator can usefully pin.
 check("the governed hooks compute the deadline fresh, with no inheritable fallback", () => {
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
@@ -223,6 +237,13 @@ check("the governed hooks compute the deadline fresh, with no inheritable fallba
       assert(m, `${event} must pass JF_AGENT_GUARD_ENFORCE_DEADLINE="$(($(date +%s) + N))"`);
       assert(!/JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\{/.test(h.command),
         `${event} must not allow an inherited deadline: a stale absolute instant pins every invocation to the past`);
+      // Deadline vs hook timeout ONLY. An earlier revision (432a6a9) also asserted
+      // npm bound + agent-guard budget + render time <= timeout. That check is gone on purpose,
+      // not by omission: its arithmetic was unsound, because npm_config_fetch_timeout is PER
+      // REQUEST and a cold npx makes several plus a tarball download, so the "npm bound" term was
+      // never a worst case and the sum it computed was not one either. The absolute deadline
+      // subsumes what that sum was protecting — agent-guard stops at a wall-clock instant that
+      // sits inside the timeout no matter how long npm took to get there.
       const budgetS = Number(m[1]);
       assert(budgetS < (h.timeout ?? 0),
         `${event}: the deadline (+${budgetS}s) must fall inside the ${h.timeout}s hook timeout, or agent-guard is killed before it can write its verdict`);
@@ -237,7 +258,11 @@ check("the governed hooks bound their fetch so a dead registry gives up quickly"
       const fetchTimeout = /npm_config_fetch_timeout=(\d+)/.exec(h.command);
       assert(retries && Number(retries[1]) === 0,
         `${event} must set npm_config_fetch_retries=0: npm's default of 2 backs off 10s then 60s`);
-      assert(fetchTimeout, `${event} must set npm_config_fetch_timeout: npm's default is 300000ms`);
+      // The VALUE, not just its presence: npm_config_fetch_timeout=300000 is npm's own default,
+      // so asserting presence alone would let an edit back to the default pass unnoticed. The
+      // bound has to stay well inside the hook timeout to be worth setting at all.
+      assert(fetchTimeout && Number(fetchTimeout[1]) <= 10_000,
+        `${event} must set npm_config_fetch_timeout <= 10000 (npm's default is 300000ms), got ${fetchTimeout?.[1]}`);
     }
   }
 });
@@ -251,80 +276,98 @@ check("the two governed hooks run byte-identical commands", () => {
 // Behavioural checks: execute the real hooks.json command string.
 // ---------------------------------------------------------------------------
 
-await check("forwards stdin verbatim and hands agent-guard the expected argv", async () => {
-  const record = stubNpx({ stdout: "" });
-  const payload = `{"hook_event_name":"PreToolUse","tool_name":"Skill","tool_input":{"skill":"demo"}}`;
-  const r = runHookCommand(commandFor("PreToolUse"), payload);
-  assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
-  const seen = JSON.parse(readFileSync(record, "utf8"));
-  assert(seen.stdin === payload, `stdin altered: ${seen.stdin}`);
-  assert(seen.argv.includes("--enforce-skill"), `argv missing --enforce-skill: ${seen.argv}`);
-  assert(seen.argv[seen.argv.indexOf("--client") + 1] === "claude-code", `bad --client: ${seen.argv}`);
-  assert(!seen.argv.includes("--waiver-helper"),
-    `--waiver-helper must not reach agent-guard; it owns the waiver flow: ${seen.argv}`);
-  assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
-    `must default to the releases registry: ${seen.argv}`);
-  assert(seen.argv.includes("@jfrog/agent-guard"),
-    `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
-});
-
-await check("forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)", async () => {
-  const deny = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"nope"}}`;
-  stubNpx({ stdout: deny });
-  const r = runHookCommand(commandFor("PreToolUse"), "{}");
-  assert(r.code === 0, `a rendered verdict must exit 0 and let the JSON decide, got exit=${r.code}`);
-  assert(r.stdout === deny, `stdout altered: ${r.stdout}`);
-});
-
-await check("empty stdout means allow (no output, exit 0)", async () => {
-  stubNpx({ stdout: "" });
-  const r = runHookCommand(commandFor("PreToolUse"), "{}");
-  assert(r.code === 0 && r.stdout === "", `exit=${r.code} stdout=${r.stdout}`);
-});
-
-// Infrastructure failures fail OPEN, by product requirement: a user who cannot run the guard is
-// not governed by it, and blocking them enforces nothing except their inability to work. The hook
-// therefore does NOT convert failures into exit 2 — agent-guard's own exit code is the verdict,
-// and only agent-guard can tell a broken environment from a policy decision.
-await check("an agent-guard failure fails OPEN, not closed", async () => {
-  stubNpx({ stdout: "", exitCode: 1 });
-  const r = runHookCommand(commandFor("PreToolUse"), "{}");
-  assert(r.code !== 2, `exit 2 blocks; an internal failure must fail open, got exit=${r.code}`);
-});
-
-await check("npx missing entirely fails OPEN", async () => {
-  const r = runHookCommand(commandFor("PreToolUse"), "{}", { isolate: true });
-  assert(r.code !== 2, `a missing npx must not block, got exit=${r.code}`);
-});
-
-// The other half of the same rule, and the one that must never regress: when agent-guard DOES
-// reach a decision to block, the hook has to pass it through untouched. Nothing in the command
-// may swallow, remap, or re-raise its exit code.
-await check("agent-guard's own exit 2 still blocks", async () => {
-  stubNpx({ stdout: "", exitCode: 2 });
-  const r = runHookCommand(commandFor("PreToolUse"), "{}");
-  assert(r.code === 2, `agent-guard blocked; the hook must propagate exit 2, got exit=${r.code}`);
-});
-
-await check("JFROG_AGENT_GUARD_REPO redirects the registry, and nothing can pin the version", async () => {
-  const record = stubNpx({ stdout: "" });
-  const r = runHookCommand(commandFor("PreToolUse"), "{}", {
-    extraEnv: {
-      JFROG_AGENT_GUARD_REPO: "https://example.invalid/npm/dev/",
-      // Set on purpose: the pin mechanism was deliberately removed, so this must have NO effect.
-      // If a future edit reintroduces it, this check turns that back into a visible failure.
-      JFROG_AGENT_GUARD_VERSION: "0.0.0-master.1.gabc",
-    },
+// Run every behavioural check against BOTH governed events, not just PreToolUse. The
+// byte-identical check above already makes divergence loud, but it only holds while it runs
+// first; looping here means a future hook that stops being identical is still exercised on its
+// own terms rather than inheriting PreToolUse's result.
+for (const event of GOVERNED_EVENTS) {
+  await check(`${event}: forwards stdin verbatim and hands agent-guard the expected argv`, async () => {
+    const record = stubNpx({ stdout: "" });
+    const payload = `{"hook_event_name":"${event}","tool_name":"Skill","tool_input":{"skill":"demo"}}`;
+    const r = runHookCommand(commandFor(event), payload);
+    assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
+    const seen = JSON.parse(readFileSync(record, "utf8"));
+    assert(seen.stdin === payload, `stdin altered: ${seen.stdin}`);
+    assert(seen.argv.includes("--enforce-skill"), `argv missing --enforce-skill: ${seen.argv}`);
+    assert(seen.argv[seen.argv.indexOf("--client") + 1] === "claude-code", `bad --client: ${seen.argv}`);
+    assert(!seen.argv.includes("--waiver-helper"),
+      `--waiver-helper must not reach agent-guard; it owns the waiver flow: ${seen.argv}`);
+    assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
+      `must default to the releases registry: ${seen.argv}`);
+    assert(seen.argv.includes("@jfrog/agent-guard"),
+      `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
   });
-  assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
-  const seen = JSON.parse(readFileSync(record, "utf8"));
-  assert(seen.argv[seen.argv.indexOf("--registry") + 1] === "https://example.invalid/npm/dev/",
-    `registry override ignored: ${seen.argv}`);
-  assert(seen.argv.includes("@jfrog/agent-guard"),
-    `the package spec must stay plain "@jfrog/agent-guard": ${seen.argv}`);
-  assert(!seen.argv.some((a) => a.startsWith("@jfrog/agent-guard@")),
-    `an env var pinned the version of a security control: ${seen.argv}`);
-});
+
+  await check(`${event}: forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)`, async () => {
+    const deny = `{"hookSpecificOutput":{"hookEventName":"${event}","permissionDecision":"deny","permissionDecisionReason":"nope"}}`;
+    stubNpx({ stdout: deny });
+    const r = runHookCommand(commandFor(event), "{}");
+    assert(r.code === 0, `a rendered verdict must exit 0 and let the JSON decide, got exit=${r.code}`);
+    assert(r.stdout === deny, `stdout altered: ${r.stdout}`);
+  });
+
+  await check(`${event}: empty stdout means allow (no output, exit 0)`, async () => {
+    stubNpx({ stdout: "" });
+    const r = runHookCommand(commandFor(event), "{}");
+    assert(r.code === 0 && r.stdout === "", `exit=${r.code} stdout=${r.stdout}`);
+  });
+
+  // Infrastructure failures fail OPEN, by product requirement: a user who cannot run the guard is
+  // not governed by it, and blocking them enforces nothing except their inability to work. The hook
+  // therefore does NOT convert failures into exit 2 — agent-guard's own exit code is the verdict,
+  // and only agent-guard can tell a broken environment from a policy decision.
+  await check(`${event}: an agent-guard failure fails OPEN, not closed`, async () => {
+    stubNpx({ stdout: "", exitCode: 1 });
+    const r = runHookCommand(commandFor(event), "{}");
+    assert(r.code !== 2, `exit 2 blocks; an internal failure must fail open, got exit=${r.code}`);
+  });
+
+  await check(`${event}: npx missing entirely fails OPEN`, async () => {
+    const r = runHookCommand(commandFor(event), "{}", { isolate: true });
+    assert(r.code !== 2, `a missing npx must not block, got exit=${r.code}`);
+  });
+
+  // The header calls a hook killed at the client's timeout non-blocking. This EMULATES that kill
+  // rather than reproducing it — Claude Code owns the real timer, and nothing here can drive it —
+  // by giving spawnSync a ceiling well under the stub's sleep and asserting what survives the
+  // kill. What matters is the shape of the result: a killed command cannot yield exit 2, so it
+  // cannot block, which is exactly why the command must not rely on being killed to fail closed.
+  await check(`${event}: a hook killed at the timeout does not block`, async () => {
+    stubNpx({ stdout: "", exitCode: 2, sleepMs: 4_000 });
+    const r = runHookCommand(commandFor(event), "{}", { timeoutMs: 1_000 });
+    assert(r.code !== 2,
+      `a killed hook must not surface as a block, got exit=${r.code}`);
+  });
+
+  // The other half of the same rule, and the one that must never regress: when agent-guard DOES
+  // reach a decision to block, the hook has to pass it through untouched. Nothing in the command
+  // may swallow, remap, or re-raise its exit code.
+  await check(`${event}: agent-guard's own exit 2 still blocks`, async () => {
+    stubNpx({ stdout: "", exitCode: 2 });
+    const r = runHookCommand(commandFor(event), "{}");
+    assert(r.code === 2, `agent-guard blocked; the hook must propagate exit 2, got exit=${r.code}`);
+  });
+
+  await check(`${event}: JFROG_AGENT_GUARD_REPO redirects the registry, and nothing can pin the version`, async () => {
+    const record = stubNpx({ stdout: "" });
+    const r = runHookCommand(commandFor(event), "{}", {
+      extraEnv: {
+        JFROG_AGENT_GUARD_REPO: "https://example.invalid/npm/dev/",
+        // Set on purpose: the pin mechanism was deliberately removed, so this must have NO effect.
+        // If a future edit reintroduces it, this check turns that back into a visible failure.
+        JFROG_AGENT_GUARD_VERSION: "0.0.0-master.1.gabc",
+      },
+    });
+    assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
+    const seen = JSON.parse(readFileSync(record, "utf8"));
+    assert(seen.argv[seen.argv.indexOf("--registry") + 1] === "https://example.invalid/npm/dev/",
+      `registry override ignored: ${seen.argv}`);
+    assert(seen.argv.includes("@jfrog/agent-guard"),
+      `the package spec must stay plain "@jfrog/agent-guard": ${seen.argv}`);
+    assert(!seen.argv.some((a) => a.startsWith("@jfrog/agent-guard@")),
+      `an env var pinned the version of a security control: ${seen.argv}`);
+  });
+}
 
 // agent-guard IS the enforcement. Letting the environment choose which build of it runs inverts
 // the trust relationship: the machine being governed would pick its own governor, and could hold
