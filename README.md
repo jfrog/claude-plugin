@@ -10,7 +10,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | --- | --- | --- |
 | **MCP** | JFrog MCP server | Remote JFrog MCP server auto-attached to every session via `.mcp.json` at `${JFROG_URL}/mcp` (OAuth, no API keys). |
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
-| **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
+| **Skill** | Package curation | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook + Skill** | Agent Package Resolution (Preview) | Automatically route packages installed by the AI agent through your organization's JFrog Artifactory, keeping agent-driven installs inside your Curation, Xray, and governance perimeter. |
 | **Hook** | Plugin MCP rewrite | On SessionStart / FileChanged, rewrite discovered installed-plugin `.mcp.json` files through Agent Guard (`--rewrite-mcp-json`) so stdio MCP entries launch via `@jfrog/agent-guard`. |
 | **Hook** | Skill Governance (Preview) | Evaluates the skills Claude invokes against your organization's JFrog skill governance policies, and blocks the ones that violate them — showing which policies were violated and the command to request a waiver. Enforcement runs in the JFrog Agent Guard; the hook only carries the event to it. |
@@ -41,7 +41,7 @@ Before installing, make sure you have:
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
 - **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard). Without it Skill Governance cannot run, and governed actions are allowed unchecked.
 - **Git Bash on Windows** — the Skill Governance hook runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook cannot run and governed actions are allowed unchecked. Not needed on macOS or Linux.
-- **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
+- **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.31.1/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve credentials/server ID from the JFrog CLI instead of `JFROG_URL`/`JFROG_ACCESS_TOKEN` env vars. Older CLIs don't support the `--format` flag used by `jf config show` for this.
 - **JFrog project** (optional) — If you want to use the Agent Guard feature.
@@ -151,7 +151,7 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Create a scoped access token for CI." | Creates an access token with the requested scope. |
 | "Promote this release bundle to production." | Uses Lifecycle / Distribution APIs to promote the bundle. |
 
-### Package safety & download skill
+### Package curation skill
 
 | Ask the agent… | What happens |
 | --- | --- |
