@@ -72,7 +72,7 @@ claude --plugin-dir /path/to/claude-plugin
 
 | Variable | Description |
 | --- | --- |
-| `JFROG_PLATFORM_URL` | Your JFrog platform host, e.g. `mycompany.jfrog.io` (no `https://`, no trailing `/`). |
+| `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` (no trailing `/`). |
 | `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
 ### 2. Configure the JFrog CLI
@@ -86,7 +86,7 @@ If you have never configured the JFrog CLI on this machine:
    ```
 3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
 
-Setting `JFROG_PLATFORM_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one. Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+Setting `JFROG_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one. Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
 
 ---
 
@@ -104,7 +104,7 @@ If a check fails, see [Recovery](#recovery). Fix the step `/jfrog-init` reports,
 
 | Symptom | Do this | Do **not** do this |
 | --- | --- | --- |
-| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_PLATFORM_URL` alone will register MCP. |
+| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_URL` alone will register MCP. |
 | `/jfrog-init` stopped at CLI/auth | Follow the skill prompt, then **re-run `/jfrog-init`**. | Skip init and only export env vars. |
 | Install fails with marketplace schema errors | Run `claude plugin marketplace update claude-plugins-official` and retry. | Treat `plugins.0.source` as a diagnosis of this plugin. |
 
