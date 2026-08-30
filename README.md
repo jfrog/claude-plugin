@@ -8,7 +8,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 
 | Component | Feature | Description |
 | --- | --- | --- |
-| **MCP** | JFrog MCP server | Remote JFrog MCP server auto-attached to every session via `.mcp.json` at `${JFROG_URL}/mcp` (OAuth, no API keys). |
+| **MCP** | JFrog MCP server | Remote JFrog MCP server auto-attached to every session via `.mcp.json` (OAuth, no API keys). Run `/jfrog-init` to set the host. |
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
 | **Skill** | Package curation | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook + Skill** | Agent Package Resolution (Preview) | Automatically route packages installed by the AI agent through your organization's JFrog Artifactory, keeping agent-driven installs inside your Curation, Xray, and governance perimeter. |
@@ -43,7 +43,7 @@ Before installing, make sure you have:
 - **Git Bash on Windows** — the Skill Governance hook runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook cannot run and governed actions are allowed unchecked. Not needed on macOS or Linux.
 - **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/v0.11.0/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
-- **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve credentials/server ID from the JFrog CLI instead of `JFROG_URL`/`JFROG_ACCESS_TOKEN` env vars. Older CLIs don't support the `--format` flag used by `jf config show` for this.
+- **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve the credentials/server ID from the JFrog CLI configuration. Older CLIs don't support the `--format` flag used by `jf config show` for this.
 - **JFrog project** (optional) — If you want to use the Agent Guard feature.
 
 ---
@@ -71,6 +71,8 @@ claude plugin marketplace update claude-plugins-official
 claude plugin install jfrog@claude-plugins-official
 ```
 
+Then run **`/jfrog-init`** to complete the shared readiness walk, **restart Claude Code**, and verify below.
+
 ### Local development
 
 From a clone of this repository (repository root **is** the plugin root):
@@ -87,7 +89,7 @@ claude --plugin-dir /path/to/claude-plugin
 
 | Variable | Description |
 | --- | --- |
-| `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` (no trailing `/`) |
+| `JFROG_URL` | Your JFrog platform URL, e.g. `https://mycompany.jfrog.io` (no trailing `/`). |
 | `JFROG_ACCESS_TOKEN` | Your JFrog access token |
 
 ### 2. Configure the JFrog CLI
@@ -100,6 +102,28 @@ If you have never configured the JFrog CLI on this machine:
    jf config add
    ```
 3. Follow the interactive prompts to enter the same JFrog platform URL and access token.
+
+Setting `JFROG_URL` / `JFROG_ACCESS_TOKEN` alone does **not** replace a successful `/jfrog-init` walk or repair a failed one. Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+
+---
+
+## Verify
+
+Verification is a required install step, not a troubleshooting fallback:
+
+1. `/plugins` → **Installed** — the JFrog plugin is listed.
+2. Run **`/jfrog-init`** — it completes without blocking errors. Restart Claude Code if it changed the MCP config.
+3. `jf rt ping` — succeeds against your configured server.
+
+If a check fails, see [Recovery](#recovery). Fix the step `/jfrog-init` reports, re-run it, then restart Claude Code.
+
+## Recovery
+
+| Symptom | Do this | Do **not** do this |
+| --- | --- | --- |
+| MCP missing after install | Run `/jfrog-init`, complete OAuth if prompted, **restart Claude Code**, re-check MCP tools. | Assume `JFROG_URL` alone will register MCP. |
+| `/jfrog-init` stopped at CLI/auth | Follow the skill prompt, then **re-run `/jfrog-init`**. | Skip init and only export env vars. |
+| Install fails with marketplace schema errors | Run `claude plugin marketplace update claude-plugins-official` and retry. | Treat `plugins.0.source` as a diagnosis of this plugin. |
 
 ---
 
