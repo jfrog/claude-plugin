@@ -10,7 +10,7 @@ The JFrog plugin provides the following capabilities, grouped by component:
 | --- | --- | --- |
 | **MCP** | JFrog MCP server | Remote JFrog MCP server auto-attached to every session via `.mcp.json` at `${JFROG_URL}/mcp` (OAuth, no API keys). |
 | **Skill** | JFrog Platform | Interact with Artifactory repositories, builds, permissions, users, access tokens, projects, release bundles, and platform administration via the JFrog CLI and REST/GraphQL APIs. Also covers security audits, CVE lookups, and Advanced Security exposure queries. |
-| **Skill** | Package safety & download | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
+| **Skill** | Package curation | Check whether npm, Maven, PyPI, Go, and other packages are safe, curated, or allowed, then download them through Artifactory remote caches or curation-aware package managers. |
 | **Hook + Skill** | Agent Package Resolution (Preview) | Automatically route packages installed by the AI agent through your organization's JFrog Artifactory, keeping agent-driven installs inside your Curation, Xray, and governance perimeter. |
 | **Hook** | Plugin MCP rewrite | On SessionStart / FileChanged, rewrite discovered installed-plugin `.mcp.json` files through Agent Guard (`--rewrite-mcp-json`) so stdio MCP entries launch via `@jfrog/agent-guard`. |
 | **Hook** | Skill Governance (Preview) | Evaluates the skills Claude invokes against your organization's JFrog skill governance policies, and blocks the ones that violate them — showing which policies were violated and the command to request a waiver. Enforcement runs in the JFrog Agent Guard; the hook only carries the event to it. |
@@ -151,7 +151,7 @@ Once configured, interact with the JFrog plugin through natural language. Exampl
 | "Create a scoped access token for CI." | Creates an access token with the requested scope. |
 | "Promote this release bundle to production." | Uses Lifecycle / Distribution APIs to promote the bundle. |
 
-### Package safety & download skill
+### Package curation skill
 
 | Ask the agent… | What happens |
 | --- | --- |
