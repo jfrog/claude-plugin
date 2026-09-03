@@ -92,6 +92,19 @@ versions, so use the versions call above to pick the repo, never a name listing.
   `--repo <chosen>`. The newest version may only exist in one of them, so
   surface that to avoid giving the user a stale version.
 
+  **A name+version match across repos is not proof it's the same skill.**
+  Different repos can hold genuinely different skills (different author,
+  different content) under the same slug and version. Never auto-pick "the
+  first" or "the newest-looking" repo when more than one holds a match —
+  always show every candidate repo and let the user choose.
+
+  <!-- TODO(MLAI-1309): swap this to the dedicated per-repo skill listing API
+  once it ships. `--list-skill-versions`'s `locations[].repoKey` is only an
+  interim source here — it confirms *which* repos host a matching
+  name+version, but carries none of the per-repo governance/metadata the
+  real endpoint will add. Do not build a mock/stub for this in the meantime;
+  keep using `--list-skill-versions` until the real API lands. -->
+
 ## When evidence verification fails
 
 If install fails with `evidence verification failed … no evidence found`, the
