@@ -199,8 +199,7 @@ async function isGatewayPluginEnabled(baseUrl, token) {
     root + BRIDGE_CLIENT_PREFIX + SETTINGS_PATH,
     token,
   );
-  // The fallback may only IMPROVE the outcome — anything inconclusive keeps
-  // the root verdict, and with it every pre-existing reason and exit code.
+  // Bridge may only UPGRADE the verdict; anything else keeps the root result.
   if (bridgeResult.ok || bridgeResult.registryOff) return strip(bridgeResult);
   return strip(rootResult);
 }

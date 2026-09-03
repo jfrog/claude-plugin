@@ -166,13 +166,12 @@ export async function detectCatalogRuntime(serverIdArg) {
   // only on proof of a catalog: a 2xx of the right shape, or the 403 that
   // means "deployed, this user isn't entitled". A WAF's 401 or a captive 200
   // must NOT win, or a fine set of credentials gets reported as rejected.
-  // (authedFetch builds its own base from `jf config export`; `endpoint` comes
-  // from `jf config show`. Only the prefix is shared, so re-derive it here.)
+  // Adopting leaves only the green and not_entitled branches reachable, and
+  // neither reports `endpoint`, so it stays the root path it was built from.
   if (httpCode === "404" && !prefix) {
     const retry = await authedFetch(creds, `${BRIDGE_CLIENT_PREFIX}${CATALOG_PATH}`);
     const retryCode = retry.code === 0 ? "000" : String(retry.code);
     if ((/^2/.test(retryCode) && looksLikeCatalog(retry.body)) || retryCode === "403") {
-      endpoint = `${url}${BRIDGE_CLIENT_PREFIX}${CATALOG_PATH}`;
       body = retry.body;
       httpCode = retryCode;
     }
