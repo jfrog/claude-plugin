@@ -7,7 +7,7 @@ The skill packages under `skills/` are vendored from **[jfrog/jfrog-skills](http
 | **Repository** | https://github.com/jfrog/jfrog-skills |
 | **Pinned release** | see `pin` in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json) |
 
-Included directories: `jfrog/`, `jfrog-ai-catalog-skills/`, `jfrog-package-safety-and-download/`, `jfrog-reference-architecture/`, `jfrog-setup-package-managers/` (as of the pinned release).
+Included directories: `jfrog/`, `jfrog-ai-catalog-skills/`, `jfrog-package-curation/`, `jfrog-reference-architecture/`, `jfrog-setup-package-managers/` (as of the pinned release).
 
 ## Refreshing
 
@@ -37,6 +37,8 @@ The `modules/` bundle is vendored from **jfrog-agent-hooks** (GHE) and committed
 | **Pinned release** | see `pin` in [`.github/scripts/sync-modules-vendor.json`](.github/scripts/sync-modules-vendor.json) |
 
 The bundle contains harness runners (`core/`, `*-session-start.mjs`), the `package-resolution/` capability, and `assets/agents-default-conf.json`. Automated sync PRs (`chore/sync-modules-v*`) update this tree on each `jfrog-agent-hooks` release.
+
+Harness-specific scripts (for example `scripts/claude-align-mcp-json.mjs` and `claude-mcp-json-discover.mjs`) live **outside** `modules/` so sync does not wipe them. They call shared orchestration in synced `modules/core/` (for example `rewrite-mcp-json.mjs`).
 
 ## Refreshing modules
 

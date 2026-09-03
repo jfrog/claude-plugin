@@ -8,6 +8,64 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/modules/claude-session-start.mjs\" package-resolution",
             "timeout": 7,
             "statusMessage": "Routing package installs through JFrog Artifactory…"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-register-align-watch-paths.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Watching plugin MCP install metadata…"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" session-start",
+            "timeout": 60,
+            "statusMessage": "Aligning plugin MCPs with JFrog Agent Guard…"
+          },
+          {
+            "type": "command",
+            "shell": "bash",
+            "async": true,
+            "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --version >/dev/null 2>&1 || true",
+            "timeout": 180,
+            "statusMessage": "Refreshing the JFrog Agent Guard cache from the registry (once per session; the per-tool hooks then resolve offline)…"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "(installed_plugins|known_marketplaces)\\.json$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-align-mcp-json.mjs\" file-changed",
+            "timeout": 60,
+            "statusMessage": "Re-aligning plugin MCPs…"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"$(($(date +%s) + 25))\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "npm_config_fetch_retries=0 npm_config_fetch_timeout=10000 JF_AGENT_GUARD_ENFORCE_DEADLINE=\"$(($(date +%s) + 25))\" npx --yes --prefer-offline --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --enforce-skill --client claude-code",
+            "timeout": 30
           }
         ]
       }
