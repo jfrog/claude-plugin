@@ -128,6 +128,9 @@ the reference files above.
 - **Plugins have no Xray support**: skip all Xray-related handling (no 403
   gating on download, no inline scan on publish, no `--skip-scan` flag) when
   performing any `jf agent plugins` operation.
-- **Skill listing is governance-filtered by default**: `--list-skills` always
-  gets `--allow-status allowed` unless the user explicitly asks to see
-  blocked/all skills — see `discovering-skills.md`.
+- **Skill listing is governance-filtered by default**: `--list-skills` and
+  `--list-skill-versions` both always get `--allow-status allowed` unless the
+  user explicitly asks to see blocked/all skills or repos — see
+  `discovering-skills.md`. Each `locations[]` entry from `--list-skill-versions`
+  also carries its own `allowStatus`, since a repo's governance status is a
+  per-repo fact, never a per-version one — see `installing-skills.md`.

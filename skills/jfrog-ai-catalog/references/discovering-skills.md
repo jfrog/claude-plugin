@@ -76,9 +76,15 @@ line instead:
 
 ```bash
 npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
-  --list-skill-versions --project "<PROJECT>" --skill "<slug>" [--server "<SID>"] [--page-size <N>] [--cursor <C>] [--format json]
-# JSON: versions[].version, versions[].locations[].repoKey (page through with cursor like above)
+  --list-skill-versions --project "<PROJECT>" --skill "<slug>" --allow-status allowed [--server "<SID>"] [--page-size <N>] [--cursor <C>] [--format json]
+# JSON: versions[].version, versions[].locations[].repoKey, versions[].locations[].allowStatus (page through with cursor like above)
 ```
+
+Same governance rule as `--list-skills` (MLAI-1309): `--allow-status allowed`
+by default, `all` only when the user explicitly wants to see blocked repos
+too. Each `locations[]` entry carries its own `allowStatus` — a repo's status
+is a per-repo fact, never a per-version one, since a name+version match across
+repos is not proof it's the same skill.
 
 **Presenting versions (use this exact format).** Newest version first:
 
@@ -87,3 +93,6 @@ Versions of `<slug>`:
 | Version | Hosted in |
 |---------|-----------|
 | `<version>` | `<repoKey>`[, `<repoKey>`…] |
+
+When `--allow-status all` was used and a repo's `allowStatus` is not the
+allowed value, append it inline: `<repoKey> (blocked)`.
