@@ -36,5 +36,8 @@ jobs:
 
       - name: Run MCP rewrite hook unit tests
         run: node --test scripts/claude-mcp-json-discover.test.mjs scripts/claude-align-mcp-json.test.mjs scripts/rewrite-mcp-json.test.mjs scripts/agent-guard-check.test.mjs
+
+      - name: Run /bridge-client fallback integration tests
+        run: node --test scripts/bridge-client-fallback.test.mjs
       - name: Validate the skill-enforcement hook
         run: node scripts/validate-enforce-hook.mjs
