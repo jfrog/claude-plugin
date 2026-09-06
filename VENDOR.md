@@ -6,8 +6,11 @@ The skill packages under `skills/` are vendored from **[jfrog/jfrog-skills](http
 | --- | --- |
 | **Repository** | https://github.com/jfrog/jfrog-skills |
 | **Pinned release** | see `pin` in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json) |
+| **Plugin version** | see `version` in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) |
 
 Included directories: `jfrog/`, `jfrog-ai-catalog-skills/`, `jfrog-package-curation/`, `jfrog-reference-architecture/`, `jfrog-setup-package-managers/` (as of the pinned release).
+
+The README deliberately omits release numbers. The manifest and GitHub tags/releases are the authoritative plugin-version sources; the vendor configuration is the authoritative skills pin.
 
 ## Refreshing
 
