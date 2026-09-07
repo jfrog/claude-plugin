@@ -72,7 +72,11 @@ line instead:
 
 > No skills published in `<repo>`.
 
-## A skill's versions and hosting repos
+## A skill's versions, then its hosting repos
+
+This is a two-step reveal, not one combined table: show versions first, and
+only surface repos once the user has picked a specific version. Both steps
+read from the **same** API call and response — do not call the command twice.
 
 ```bash
 npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
@@ -86,13 +90,34 @@ too. Each `locations[]` entry carries its own `allowStatus` — a repo's status
 is a per-repo fact, never a per-version one, since a name+version match across
 repos is not proof it's the same skill.
 
-**Presenting versions (use this exact format).** Newest version first:
+**Step 1 — present versions only (use this exact format).** Newest version
+first. Do **not** include a repos/"Hosted in" column here — repos are a
+separate reveal in step 2:
 
 Versions of `<slug>`:
 
-| Version | Hosted in |
-|---------|-----------|
-| `<version>` | `<repoKey>`[, `<repoKey>`…] |
+| Version |
+|---------|
+| `<version>` |
+
+Then ask which version the user wants (to install, or just to see where it's
+hosted) — do not assume the newest one.
+
+**Step 2 — once a version is chosen, present its repos (use this exact
+format).** Filter the already-fetched `locations[]` down to that one version
+— no new API call:
+
+Repos hosting `<slug>@<version>`:
+
+| Repo |
+|------|
+| `<repoKey>` |
 
 When `--allow-status all` was used and a repo's `allowStatus` is not the
 allowed value, append it inline: `<repoKey> (blocked)`.
+
+- **Exactly one repo.** State it plainly ("hosted in `<repoKey>`") — no need
+  to ask the user to choose.
+- **More than one repo.** Never auto-pick or merge. Ask the user which repo
+  they mean before doing anything further (installing, etc.) — see
+  `installing-skills.md`'s *Multiple repos host the slug*.
