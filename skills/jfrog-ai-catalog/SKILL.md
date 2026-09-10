@@ -97,7 +97,7 @@ flowchart TD
     B -->|No| C[Ask user to install jf CLI, then continue]
     B -->|Yes| D{Intent}
     C --> D
-    D -->|List all skills / versions| E[npx @jfrog/agent-guard --list-skills --allow-status allowed]
+    D -->|List all skills / versions| E[npx @jfrog/agent-guard --list-skills --allowed-only]
     D -->|Install / update skill| F[Resolve slug + version, then jf skills install/update]
     D -->|List installed skills / remove| G[jf skills list / rm -rf install dir]
     D -->|Publish skill| H[Resolve/provision repo, validate bundle, jf skills publish]
@@ -129,8 +129,10 @@ the reference files above.
   gating on download, no inline scan on publish, no `--skip-scan` flag) when
   performing any `jf agent plugins` operation.
 - **Skill listing is governance-filtered by default**: `--list-skills` and
-  `--list-skill-versions` both always get `--allow-status allowed` unless the
-  user explicitly asks to see blocked/all skills or repos — see
-  `discovering-skills.md`. Each `locations[]` entry from `--list-skill-versions`
+  `--list-skill-versions` both always get `--allowed-only` unless the user
+  explicitly asks to see blocked/all skills or repos. Agent Guard is unfiltered
+  when the flag is omitted, so passing it is what makes a listing
+  governance-filtered — see `discovering-skills.md`. Each `locations[]` entry
+  from `--list-skill-versions`
   also carries its own `allowStatus`, since a repo's governance status is a
   per-repo fact, never a per-version one — see `installing-skills.md`.

@@ -99,10 +99,10 @@ versions, so use the versions call above to pick the repo, never a name listing.
   always show every candidate repo and let the user choose.
 
   **Each repo carries its own governance status (MLAI-1309).** Pass
-  `--allow-status allowed` (the default — see below) to `--list-skill-versions`
-  and only governance-allowed repos come back. If you need to explain why a
-  repo is missing, or the user asks to see blocked ones too, re-run with
-  `--allow-status all`: each location's `allowStatus` in the JSON (or the
+  `--allowed-only` (which the skill always does — see below) to
+  `--list-skill-versions` and only governance-allowed repos come back. If you
+  need to explain why a repo is missing, or the user asks to see blocked ones
+  too, re-run without the flag: each location's `allowStatus` in the JSON (or the
   `(allowed)` / `(blocked)` suffix in the compact table) tells you which repos
   are blocked and why to steer the user away from them.
 
