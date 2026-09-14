@@ -11,8 +11,8 @@ verify-landed check.
 - Verify the install landed
 - Update an installed skill
 
-Install by **slug** (the registry `slug`/`name`, never a display name). Latest
-version is used by default, and the user may pass an explicit version.
+Install by **slug** (the registry `slug`/`name`, never a display name). Never
+default to "latest" silently — see *Resolve the version* below for when to ask.
 **The `jf skills install` command takes no project.** Resolving which repo hosts
 the slug uses `--list-skill-versions` (below), which does require `--project`, so
 use `<PROJECT>` resolved at session start (see SKILL.md Prerequisites).
@@ -20,11 +20,16 @@ use `<PROJECT>` resolved at session start (see SKILL.md Prerequisites).
 ```bash
 jf skills install "<slug>" \
   --server-id "<SID>" \
-  --version "latest" \
+  --version "<version>" \
   --repo "<repo>" \
   --harness "<harness>" \
   --quiet
 ```
+
+`<version>` and `<repo>` are never literal placeholders you fill in blind —
+resolve both first (see *Resolve the version* and *Resolve the repo* below).
+Never substitute `--version "latest"` here without having actually resolved
+that "latest" is the right version per that section.
 
 If the download returns **HTTP 403**, the archive is Xray-gated, not a
 permissions or "not found" problem. See *Handling a blocked download
@@ -77,20 +82,39 @@ slug is hosted with the Agent Guard:
 
 ```bash
 npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
-  --list-skill-versions --project "<PROJECT>" --skill "<slug>" [--server "<SID>"] --format json
+  --list-skill-versions --project "<PROJECT>" --skill "<slug>" --allowed-only [--server "<SID>"] --format json
 # read versions[].version and versions[].locations[].repoKey
 ```
 
-**Resolve the repo and version only via `--list-skill-versions`.** The catalog
-listing (`--list-skills`, even with `--name`) returns just names, not repos or
-versions, so use the versions call above to pick the repo, never a name listing.
+**Resolve the version and the repo only via `--list-skill-versions`.** The
+catalog listing (`--list-skills`, even with `--name`) returns just names, not
+repos or versions, so use the versions call above to pick both, never a name
+listing. Resolve in this order: version first, then repo for that version.
+
+### Resolve the version
+
+- **The user already named a version** (e.g. "install skill X version 2.0.0").
+  Use it directly — confirm it's actually in `versions[]` first, don't assume.
+- **Exactly one version exists.** Use it. Don't ask.
+- **More than one version exists and the user didn't name one.** Do not
+  default to latest. Use the `AskUserQuestion` tool to ask which version to
+  install — one option per version, newest first. Fall back to a table +
+  plain-language question only if `AskUserQuestion` isn't available on the
+  current surface.
+
+### Resolve the repo
+
+Once the version is settled, filter `versions[].locations[]` down to that one
+version (no new API call — you already have this from the same response):
 
 - **One repo hosts the slug.** Use it as `--repo <repoKey>` directly. Don't ask.
 - **Multiple repos host the slug.** Do not pick silently. Naming a project is not
-  a repo choice, so ask even when one repo is project-scoped. List the repos (and
-  the version each holds), ask the user which to install from, then pass
-  `--repo <chosen>`. The newest version may only exist in one of them, so
-  surface that to avoid giving the user a stale version.
+  a repo choice, so ask even when one repo is project-scoped. Use the
+  `AskUserQuestion` tool to ask which repo to install from — one option per
+  `repoKey`, with `<slug>@<version>` in the description, so the user picks
+  with arrow keys instead of typing a repo name back. Fall back to a table +
+  plain-language question only if `AskUserQuestion` isn't available on the
+  current surface. Then pass `--repo <chosen>`.
 
   **A name+version match across repos is not proof it's the same skill.**
   Different repos can hold genuinely different skills (different author,
@@ -98,13 +122,12 @@ versions, so use the versions call above to pick the repo, never a name listing.
   first" or "the newest-looking" repo when more than one holds a match —
   always show every candidate repo and let the user choose.
 
-  **Each repo carries its own governance status (MLAI-1309).** Pass
-  `--allowed-only` (which the skill always does — see below) to
-  `--list-skill-versions` and only governance-allowed repos come back. If you
-  need to explain why a repo is missing, or the user asks to see blocked ones
-  too, re-run without the flag: each location's `allowStatus` in the JSON (or the
-  `(allowed)` / `(blocked)` suffix in the compact table) tells you which repos
-  are blocked and why to steer the user away from them.
+  **Each repo carries its own governance status (MLAI-1309).** The skill
+  always passes `--allowed-only` to `--list-skill-versions`, so only
+  governance-allowed repos ever come back and every candidate you show the
+  user is installable. Never re-run without the flag to surface blocked repos
+  — if a repo the user expects is missing, say it isn't governance-allowed for
+  this project and stop there.
 
 ## When evidence verification fails
 

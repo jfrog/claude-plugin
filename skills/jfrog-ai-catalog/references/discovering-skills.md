@@ -12,7 +12,7 @@ npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
 | Flag | Required | Purpose |
 |------|----------|---------|
 | `--project <PROJECT>` | **Yes** | AI Catalog project to list. |
-| `--allowed-only` | **Yes** | Governance filter. **Always pass it by default** — Agent Guard is unfiltered when the flag is omitted, so leaving it off is what surfaces blocked skills. Only drop it if the user explicitly asks to see blocked/disallowed skills too (e.g. "show me everything", "what's blocked"). |
+| `--allowed-only` | **Yes** | Governance filter. **Always pass it — no exceptions.** Agent Guard is unfiltered when the flag is omitted, so leaving it off is what surfaces blocked skills. Never drop it, not even when the user asks to see blocked/disallowed skills ("show me everything", "what's blocked"); tell them the listing is governance-filtered instead. |
 | `--name <PATTERN>` | No | Find skills by name: server-side, case-insensitive substring, scoped to the project. |
 | `--server <SID>` | No | jf CLI config entry to authenticate with (defaults to the resolved single server). |
 | `--page-size <N>` | No | Results per page. Pass `50` to stay bounded. The Agent Guard defaults to 500 if omitted. |
@@ -21,9 +21,11 @@ npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
 
 With `--allowed-only`, the listing includes only skills **allowed** by the
 project's governance policy. If a skill the user expects isn't in the results,
-that's the likely reason
-— don't silently retry without `--allowed-only`; tell the user and ask whether
-they want to see disallowed skills too.
+that's the likely reason — say so plainly ("`<name>` isn't in the
+governance-allowed listing for `<project>`"). Never re-run without
+`--allowed-only` to go looking for it, and don't offer to: a blocked skill is
+not something this skill surfaces. Point the user at their project's
+governance policy owner instead.
 
 Request a bounded page with `--page-size 50 --format json`, present those skills,
 then read `exhausted` and `cursor` from the response. If `exhausted` is `false`
@@ -85,11 +87,12 @@ npx --yes --registry <REGISTRY_URL> @jfrog/agent-guard \
 # JSON: versions[].version, versions[].locations[].repoKey, versions[].locations[].allowStatus (page through with cursor like above)
 ```
 
-Same governance rule as `--list-skills` (MLAI-1309): `--allowed-only` by
-default, dropped only when the user explicitly wants to see blocked repos
-too. Each `locations[]` entry carries its own `allowStatus` — a repo's status
-is a per-repo fact, never a per-version one, since a name+version match across
-repos is not proof it's the same skill.
+Same governance rule as `--list-skills` (MLAI-1309): `--allowed-only`
+always, never dropped. Each `locations[]` entry carries its own `allowStatus`
+— a repo's status is a per-repo fact, never a per-version one, since a
+name+version match across repos is not proof it's the same skill. Because the
+flag is always on, every repo that comes back is allowed; a version whose only
+host repo is blocked simply won't appear.
 
 **Step 1 — present versions only (use this exact format).** Newest version
 first. Do **not** include a repos/"Hosted in" column here — repos are a
@@ -101,8 +104,10 @@ Versions of `<slug>`:
 |---------|
 | `<version>` |
 
-Then ask which version the user wants (to install, or just to see where it's
-hosted) — do not assume the newest one.
+Then use the `AskUserQuestion` tool to ask which version the user wants (to
+install, or just to see where it's hosted) — one option per version, newest
+first. Do not assume the newest one. Fall back to a plain-language question
+only if `AskUserQuestion` isn't available on the current surface.
 
 **Step 2 — once a version is chosen, present its repos (use this exact
 format).** Filter the already-fetched `locations[]` down to that one version
@@ -114,11 +119,17 @@ Repos hosting `<slug>@<version>`:
 |------|
 | `<repoKey>` |
 
-When `--allowed-only` was omitted and a repo's `allowStatus` is not the
-allowed value, append it inline: `<repoKey> (blocked)`.
+Every repo listed here is governance-allowed (the filter is always on), so
+do **not** annotate rows with a status suffix — an `(allowed)` tag on every
+row is noise. Agent Guard's own compact TSV does print `<repoKey> (allowed)`;
+strip that when rendering this table.
 
 - **Exactly one repo.** State it plainly ("hosted in `<repoKey>`") — no need
   to ask the user to choose.
-- **More than one repo.** Never auto-pick or merge. Ask the user which repo
-  they mean before doing anything further (installing, etc.) — see
-  `installing-skills.md`'s *Multiple repos host the slug*.
+- **More than one repo.** Never auto-pick or merge. Use the `AskUserQuestion`
+  tool to ask which repo they mean before doing anything further (installing,
+  etc.) — one option per `repoKey`, so the user picks with arrow keys instead
+  of typing a repo name back. Do not fall back to the table-and-typed-reply
+  form just because `AskUserQuestion` isn't available in a given surface; if
+  it truly isn't, render the table above and ask in plain language instead.
+  See `installing-skills.md`'s *Multiple repos host the slug*.
