@@ -17,6 +17,7 @@ import { execFileSync } from "node:child_process";
 import process from "node:process";
 
 import { isMainEntry } from "./entry.mjs";
+import { skillsProductUserAgent } from "./jf-user-agent.mjs";
 
 export const SETTINGS_PATH =
   "/ml/core/api/v1/administration/account-settings/mcp_gateway_plugin_enabled";
@@ -36,14 +37,10 @@ export const EXIT_REGISTRY_DISABLED = 2;
  * @returns {string | undefined}
  */
 function envLookup(env, newName, oldName) {
-  const pick = (name) => {
-    if (!name) return undefined;
-    const raw = env[name];
-    if (typeof raw !== "string") return undefined;
-    const trimmed = raw.trim();
-    return trimmed || undefined;
-  };
-  return pick(newName) ?? pick(oldName);
+  const raw = env[newName] ?? (oldName ? env[oldName] : undefined);
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  return trimmed || undefined;
 }
 
 /**
@@ -175,7 +172,7 @@ function resolveFromCliConfig(opts) {
 }
 
 /** Drops the internal `notFound` marker from a fetchSetting() result. */
-function strip({ notFound, ...result }) {
+function strip({ notFound: _notFound, ...result }) {
   return result;
 }
 
@@ -204,7 +201,9 @@ export async function isGatewayPluginEnabled(baseUrl, token, opts = {}) {
 
   // Root 404 -> possibly self-hosted. Each attempt gets its OWN timeout
   // budget: a reused AbortController would start the retry already spent.
-  debug(`Root ${SETTINGS_PATH} returned 404; retrying behind ${BRIDGE_CLIENT_PREFIX}.`);
+  debug(
+    `Root ${SETTINGS_PATH} returned 404; retrying behind ${BRIDGE_CLIENT_PREFIX}.`,
+  );
   const bridgeResult = await fetchSetting(
     root + BRIDGE_CLIENT_PREFIX + SETTINGS_PATH,
     token,
@@ -215,9 +214,19 @@ export async function isGatewayPluginEnabled(baseUrl, token, opts = {}) {
   return strip(rootResult);
 }
 
-// One HTTP attempt against a fully-built settings URL. `notFound` marks the
-// 404 that triggers the `/bridge-client` retry; callers strip it before
-// returning so the public result shape is unchanged.
+/**
+ * One HTTP attempt against a fully-built settings URL. `notFound` marks the
+ * 404 that triggers the `/bridge-client` retry; callers strip it before
+ * returning so the public result shape is unchanged.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {{
+ *   fetchFn: typeof fetch,
+ *   timeoutMs: number,
+ *   debug: (message: string) => void,
+ * }} opts
+ */
 async function fetchSetting(url, token, { debug, fetchFn, timeoutMs }) {
   debug(`Fetching gateway plugin setting from ${url}`);
 
@@ -229,6 +238,7 @@ async function fetchSetting(url, token, { debug, fetchFn, timeoutMs }) {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
+        "User-Agent": skillsProductUserAgent(),
       },
       signal: controller.signal,
     });
