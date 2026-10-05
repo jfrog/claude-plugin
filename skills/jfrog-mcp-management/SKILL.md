@@ -178,11 +178,21 @@ values into your actions.
 user reads — not in progress lines, pre-tool narration, todos, questions, or
 the closing summary. Never write "routing", "route", "gateway", "fallback",
 or "eligibility" there, and never justify an action by it ("no secrets needed
-because ..."). The only place a routing value may appear is inside the config
+because ..."). That includes this skill's own labels — "Gateway route",
+"Gateway entry", "Agent Guard route" — which name a decision, not something
+the user knows; in what the user reads, it is "the `<MCP_NAME>` entry in
+`<file>`". The only place a routing value may appear is inside the config
 entry you write. The user sees the config edit and what to do next.
+The `url` of an entry with no `command` is a routing value too, whether you
+just wrote it or read it back from a config file (List). Do not quote the
+written entry or its `url` in the reply — say which key you added to which
+file.
 
 Good: "Added microsoft-learn to .mcp.json. Restart, then sign in on first use."
 Bad:  "Gateway route. Writing entry, no secrets needed."
+
+Good (after `--inspect`): "Adding com.supabase/mcp to .mcp.json."
+Bad:  "The output shows a Gateway route, so I'll write the Gateway entry."
 
 ## Prerequisites
 
@@ -301,32 +311,48 @@ From the output JSON, extract (keep BOTH required AND optional):
   [Output rule](#output-rule-routing-is-internal).
 
 **Resolve the route ONCE, here.** Steps 3, 4, 4a and 5 all read this single
-answer and never re-derive it from `routing.target` alone. The **Gateway
+answer and never re-derive it from `routing.target` alone. Resolve it silently
+(see [Output rule](#output-rule-routing-is-internal)): your next visible line
+names only the MCP and the file. The **Gateway
 route** is taken only when ALL THREE hold:
 1. `routing.target` is `"gateway"`;
 2. `routing.url` is non-empty;
-3. your one harness file (Step 1) defines a **Gateway entry shape** — if that
-   file has no such section, this harness cannot express a Gateway entry.
+3. your one harness file (Step 1) defines a **Gateway entry shape** — check it
+   by opening that file in this session and looking for a section headed
+   **Gateway entry shape**. Not opened yet → open it now, before deciding.
+   Never decide from memory, from this file, or from the `--inspect` output
+   alone. No such section → this harness cannot express a Gateway entry.
 
 Conditions 1 and 2 are `--inspect`'s answer and are never second-guessed;
 condition 3 is only whether this harness can express it. Any one missing →
 **Agent Guard route**: the stdio entry, with Steps 3, 4, 4a and 5 running
 exactly as they do today — inputs planned, collected and exported like any
 other Agent Guard install.
-Test them in any order: condition 3 is a property of your harness file, not of
-the `--inspect` output, so it holds or fails the same whether you read it
-before or after. A `"gateway"` target **with** a non-empty `url` on a harness
-whose file defines no Gateway entry shape therefore fails the gate — write the
-ordinary `npx --yes ... @jfrog/agent-guard` stdio entry, never a remote one.
+Condition 3 is a property of your harness file, never of the `--inspect`
+output: a `"gateway"` target never tells you this harness can write the entry.
+A `"gateway"` target **with** a non-empty `url` on a harness whose file
+defines no Gateway entry shape therefore fails the gate — write the ordinary
+`npx --yes ... @jfrog/agent-guard` stdio entry, never a remote one.
 
-**A shape change needs a removal first.** If an entry with this exact
-`spec.packageName` already exists in the target config file — exact key match
-only, never a similar, partial, or guessed name — and it is not the shape you
-are about to add (one case: it runs `@jfrog/agent-guard` and you are adding the
-Gateway entry; the other case: it carries a `url` and no `command` and you are
-adding the Agent Guard entry), add nothing: tell the user that entry exists and
-that they must remove it before adding again. Never edit, merge, or overwrite
-it, and never remove it yourself. Every other case is unchanged.
+**An entry of the other shape already exists → stop and change nothing.**
+If the target config file already has an entry whose key is exactly
+`spec.packageName` — exact key match only, never a similar, partial, or
+guessed name — and it is the other shape from the one you are about to write:
+- you are writing the Gateway entry and the existing one runs
+  `@jfrog/agent-guard`, or
+- you are writing the Agent Guard entry and the existing one carries a `url`
+  and no `command`,
+
+then this add ends here:
+- Do NOT write, edit, or delete anything — not the config file, not the
+  settings file, not the OAuth cache.
+- Skip Steps 3–5.
+- Reply only: "`<MCP_NAME>` is already installed in `<file>`. To reinstall
+  it, remove it first (ask me to remove `<MCP_NAME>`), then ask me to install
+  it again."
+
+Removing it is the user's decision, never yours. Every other case (no entry,
+or an entry of the same shape) is unchanged.
 
 On non-zero exit, show the error verbatim, then classify per
 [key-rules](references/key-rules-and-troubleshooting.md#classify-npx-jfrogagent-guard-failures).
@@ -362,6 +388,11 @@ user exports/persists the variable, see the harness file and
 prompts for `inputs` values on first start — no shell export.)
 
 ## Step 4: Write the config entry
+
+**Before you edit, check the entry you are about to write over.** Read the
+target config file. If its `spec.packageName` key already holds the other
+shape, the Step 2 rule (*An entry of the other shape already exists*) applies:
+stop, and do NOT write, replace, or delete it.
 
 **Write exactly ONE entry** — the Agent Guard entry, or your harness file's
 Gateway entry shape on the Gateway route as resolved in Step 2
@@ -510,8 +541,13 @@ add-on where the agent provides it.
    `--server`), scope (project / user).
    **Also show each entry that carries a `url` and no `command`** — this skill
    writes that shape too, so a filter on `@jfrog/agent-guard` alone hides
-   installs it made. Display name and package are both the entry key (the raw
-   `spec.packageName`), server ID `—`, scope as above. Never print the `url`.
+   installs it made. Look for it in the project file as well as the user file.
+   Display name and package are both the entry key (the raw
+   `spec.packageName`), server ID `—`, scope as above. **Never print the
+   `url`** — not in a column, a note, or a details line, not in part (host,
+   port, path), and do not say you left it out. Never call the entry Gateway
+   or routed; show only the columns above (see
+   [Output rule](#output-rule-routing-is-internal)).
    Such an entry carries no marker of who wrote it, so list it without
    asserting whether this skill did.
 2. **If the harness exposes an MCP status command or view** (the harness-config
