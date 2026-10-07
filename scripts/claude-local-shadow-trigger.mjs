@@ -10,7 +10,7 @@
 // Flow, stopping at the first result:
 //   1. the last successful scan was less than 55 minutes ago -> scanned_recently
 //   2. the default jf CLI server has no access token         -> not_logged_in
-//   3. ask the backend if scanning is enabled:
+//   3. ask the backend if scanning is enabled (on 404, retry behind /bridge-client for self-hosted):
 //        401 -> not_logged_in, enabled=false -> scanning_disabled, any error -> check_failed
 //   4. start `agent-guard --local-shadow-scan` detached      -> scanner_started
 // Each run appends its result to ~/.jfrog/shadow/local-shadow-hook.log.
@@ -57,6 +57,8 @@ export const MONITOR_INTERVAL_MS = 60 * 60 * 1000;
 export const MIN_TIME_BETWEEN_SCANS_MS = 55 * 60 * 1000;
 export const SCANNING_ENABLED_PATH =
   "/ml/core/api/v1/local-shadow/scanning-enabled";
+export const BRIDGE_CLIENT_PREFIX = "/bridge-client";
+// Per request; the self-hosted retry gets its own budget.
 const REQUEST_TIMEOUT_MS = 5000;
 export const HOOK_LOG_FILE = "local-shadow-hook.log";
 export const HOOK_LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -86,8 +88,23 @@ export function scannedRecently(receiptPath, now) {
 
 // Asks the backend whether scanning is enabled for this account.
 // Returns the trigger result: scanner_started when enabled, otherwise why not.
+// Self-hosted JPDs serve /ml/core behind /bridge-client, tried only when the
+// root path returns 404, so SaaS costs a single request.
 async function checkScanningEnabled(baseUrl, token, fetchFn) {
   const root = baseUrl.replace(/\/+$/, "").replace(/\/artifactory$/, "");
+  const saas = await requestScanningEnabled(root + SCANNING_ENABLED_PATH, token, fetchFn);
+  if (saas.status !== 404) return saas.outcome;
+  const selfHosted = await requestScanningEnabled(
+    root + BRIDGE_CLIENT_PREFIX + SCANNING_ENABLED_PATH,
+    token,
+    fetchFn,
+  );
+  return selfHosted.outcome;
+}
+
+// One GET to url. Returns the HTTP status (undefined when the request failed)
+// and the trigger result it maps to.
+async function requestScanningEnabled(url, token, fetchFn) {
   const failed = (detail) => ({
     result: RESULT.CHECK_FAILED,
     error: `scanning enabled: ${detail}`,
@@ -96,7 +113,7 @@ async function checkScanningEnabled(baseUrl, token, fetchFn) {
   let response;
   let body;
   try {
-    response = await fetchFn(root + SCANNING_ENABLED_PATH, {
+    response = await fetchFn(url, {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
@@ -106,16 +123,20 @@ async function checkScanningEnabled(baseUrl, token, fetchFn) {
     });
     body = response.ok ? await response.json() : null;
   } catch (err) {
-    return failed(safeErrorMessage(err));
+    return { status: response?.status, outcome: failed(safeErrorMessage(err)) };
   }
 
-  if (response.status === 401) {
-    return { result: RESULT.NOT_LOGGED_IN, error: "token rejected (HTTP 401)" };
+  const { status } = response;
+  if (status === 401) {
+    return {
+      status,
+      outcome: { result: RESULT.NOT_LOGGED_IN, error: "token rejected (HTTP 401)" },
+    };
   }
-  if (!response.ok) return failed(`HTTP ${response.status}`);
-  if (body?.enabled === true) return { result: RESULT.SCANNER_STARTED };
-  if (body?.enabled === false) return { result: RESULT.SCANNING_DISABLED };
-  return failed("response has no boolean 'enabled'");
+  if (!response.ok) return { status, outcome: failed(`HTTP ${status}`) };
+  if (body?.enabled === true) return { status, outcome: { result: RESULT.SCANNER_STARTED } };
+  if (body?.enabled === false) return { status, outcome: { result: RESULT.SCANNING_DISABLED } };
+  return { status, outcome: failed("response has no boolean 'enabled'") };
 }
 
 // Starts `agent-guard --local-shadow-scan` in the background. Resolves as soon as

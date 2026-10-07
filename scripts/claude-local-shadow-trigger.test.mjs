@@ -17,6 +17,7 @@ import path from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 
 import {
+  BRIDGE_CLIENT_PREFIX,
   HOOK_LOG_FILE,
   HOOK_LOG_MAX_BYTES,
   RESULT,
@@ -48,10 +49,13 @@ const bearer = () => ({
   identity: { url: URL_ROOT, auth: { kind: "bearer", token: "tok" } },
 });
 
-function stubFetch(response) {
+// response is one response for every URL, or a url -> response function.
+function stubFetch(responseOrFn) {
   const calls = [];
   const fetchFn = async (url, init) => {
     calls.push({ url, init });
+    const response =
+      typeof responseOrFn === "function" ? responseOrFn(url) : responseOrFn;
     if (response instanceof Error) throw response;
     const { status = 200, body } = response;
     return {
@@ -231,6 +235,47 @@ test("scanner_started: one backend call, then the scanner starts detached", asyn
   const [entry] = readHookLog();
   assert.equal(entry.result, RESULT.SCANNER_STARTED);
   assert.equal(entry.error, undefined);
+});
+
+const SAAS_URL = `${URL_ROOT}${SCANNING_ENABLED_PATH}`;
+const SELF_HOSTED_URL = `${URL_ROOT}${BRIDGE_CLIENT_PREFIX}${SCANNING_ENABLED_PATH}`;
+
+test("SaaS: an answer on the root path never tries /bridge-client", async () => {
+  const calls = await run({ response: { body: { enabled: false } } });
+  assert.deepEqual(calls.fetch.map((c) => c.url), [SAAS_URL]);
+});
+
+test("self-hosted: root 404, then /bridge-client says enabled", async () => {
+  const calls = await run({
+    response: (url) => (url === SAAS_URL ? { status: 404 } : { body: { enabled: true } }),
+  });
+  assert.deepEqual(calls.fetch.map((c) => c.url), [SAAS_URL, SELF_HOSTED_URL]);
+  assert.equal(calls.fetch[1].init.headers.Authorization, "Bearer tok");
+  assert.equal(calls.spawn.length, 1);
+  assert.equal(readHookLog()[0].result, RESULT.SCANNER_STARTED);
+});
+
+for (const [label, selfHosted, result, error] of [
+  ["disabled", { body: { enabled: false } }, RESULT.SCANNING_DISABLED, undefined],
+  ["401", { status: 401 }, RESULT.NOT_LOGGED_IN, "token rejected (HTTP 401)"],
+  ["404 too", { status: 404 }, RESULT.CHECK_FAILED, "scanning enabled: HTTP 404"],
+  ["unreachable", new Error("ECONNRESET"), RESULT.CHECK_FAILED, "scanning enabled: ECONNRESET"],
+]) {
+  test(`self-hosted: root 404, then /bridge-client ${label}`, async () => {
+    const calls = await run({
+      response: (url) => (url === SAAS_URL ? { status: 404 } : selfHosted),
+    });
+    assert.equal(calls.spawn.length, 0);
+    const [entry] = readHookLog();
+    assert.equal(entry.result, result);
+    assert.equal(entry.error, error);
+  });
+}
+
+test("a root failure other than 404 never tries /bridge-client", async () => {
+  const calls = await run({ response: { status: 500 } });
+  assert.deepEqual(calls.fetch.map((c) => c.url), [SAAS_URL]);
+  assert.equal(readHookLog()[0].error, "scanning enabled: HTTP 500");
 });
 
 test("the backend URL drops a trailing /artifactory", async () => {
