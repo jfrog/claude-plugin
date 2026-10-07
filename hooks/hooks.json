@@ -28,6 +28,12 @@
             "command": "npx --yes --registry \"${JFROG_AGENT_GUARD_REPO:-https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/}\" @jfrog/agent-guard --version >/dev/null 2>&1 || true",
             "timeout": 180,
             "statusMessage": "Refreshing the JFrog Agent Guard cache from the registry (once per session; the per-tool hooks then resolve offline)…"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/claude-local-shadow-trigger.mjs\" session_start",
+            "timeout": 15
           }
         ]
       }
