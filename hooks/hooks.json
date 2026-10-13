@@ -33,7 +33,7 @@
             "type": "command",
             "async": true,
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/modules/core/local-shadow-trigger.mjs\" session_start",
-            "timeout": 15
+            "timeout": 90
           }
         ]
       }
