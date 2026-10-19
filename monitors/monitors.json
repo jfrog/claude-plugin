@@ -1,8 +1,0 @@
-[
-  {
-    "name": "local-shadow",
-    "command": "node \"${CLAUDE_PLUGIN_ROOT}/modules/core/local-shadow-trigger.mjs\" monitor",
-    "description": "JFrog Local Shadow AI hourly scan trigger",
-    "when": "always"
-  }
-]
