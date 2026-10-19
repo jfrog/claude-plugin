@@ -124,8 +124,8 @@ organization is legitimate).
 ### Exit 3 — Multiple JFrog servers, none set as default
 
 The gate could not tell which JPD to check: no complete `JFROG_URL`/`JF_URL` +
-`JFROG_ACCESS_TOKEN`/`JF_ACCESS_TOKEN` credential pair is set in the env, 
-there is no default `jf` server, and two or more servers are configured. 
+`JFROG_ACCESS_TOKEN`/`JF_ACCESS_TOKEN` credential pair is set in the env,
+there is no default `jf` server, and two or more servers are configured.
 This is NOT a disabled or unknown result — the gate just needs the user to say which server to use.
 
 Do this:
@@ -171,18 +171,6 @@ that harness file's fields wherever a step says "per harness-config". Adding a
 new agent is a new `harness-<name>.md` file, with no change to this workflow.
 Never hard-code one harness's `.mcp.json` / `mcpServers` / `claude mcp list`
 values into your actions.
-
-## Output rule: routing is internal
-
-`--inspect`'s `routing` field is plumbing. It never appears in anything the
-user reads — not in progress lines, pre-tool narration, todos, questions, or
-the closing summary. Never write "routing", "route", "gateway", "fallback",
-or "eligibility" there, and never justify an action by it ("no secrets needed
-because ..."). The only place a routing value may appear is inside the config
-entry you write. The user sees the config edit and what to do next.
-
-Good: "Added microsoft-learn to .mcp.json. Restart, then sign in on first use."
-Bad:  "Gateway route. Writing entry, no secrets needed."
 
 ## Prerequisites
 
@@ -297,8 +285,7 @@ From the output JSON, extract (keep BOTH required AND optional):
   The agent guard is the only source of truth for this block: never validate
   its shape here, and never enumerate the cases it covers. Both the absent and
   the non-`gateway` cases are normal and mean nothing is wrong: never ask about
-  them, and never work out the route any other way. See
-  [Output rule](#output-rule-routing-is-internal).
+  them, and never work out the route any other way.
 
 **Resolve the route ONCE, here.** Steps 3, 4, 4a and 5 all read this single
 answer and never re-derive it from `routing.target` alone. The **Gateway
@@ -390,8 +377,9 @@ Guardrails (identical everywhere):
   `--inspect` output carried `routing.target: "gateway"` with a non-empty
   `routing.url`. Then write that shape, with `url` copied verbatim from
   `routing.url`. Anything else → the stdio rule applies with no exception.
-  Never infer this from a URL that looks like a Gateway URL, and never build
-  that URL yourself. These are the same three conditions resolved in Step 2 —
+  Never write that shape because a URL looks like a Gateway URL, and never
+  build that URL yourself.
+  These are the same three conditions resolved in Step 2 —
   restated here, never a second, looser test.
 - `--server` in `args` is conditional (Step 1): drop it only on the URL+token
   env path (`JFROG_URL`+`JFROG_ACCESS_TOKEN`, or legacy
@@ -509,11 +497,15 @@ add-on where the agent provides it.
    installed), package (`mcp=` in `_JF_ARGS`), server ID (value after
    `--server`), scope (project / user).
    **Also show each entry that carries a `url` and no `command`** — this skill
-   writes that shape too, so a filter on `@jfrog/agent-guard` alone hides
-   installs it made. Display name and package are both the entry key (the raw
-   `spec.packageName`), server ID `—`, scope as above. Never print the `url`.
-   Such an entry carries no marker of who wrote it, so list it without
-   asserting whether this skill did.
+   writes that shape too (a remote MCP Gateway entry), so a filter on
+   `@jfrog/agent-guard` alone hides installs it made. Display name and package
+   are both the entry key (the raw `spec.packageName`), server ID `—`, scope as
+   above. Such an entry carries no marker of who wrote it, so list it without
+   asserting whether this skill did. **When its `url` contains `/mcp-gateway/`
+   (a remote MCP Gateway entry), show that complete `url`, from `http` to the
+   end — in a table too, never shortened with `...`** — e.g.
+   `https://acme.jfrog.io/mcp-gateway/mcp/proj/com.supabase%2Fmcp`, not
+   `.../mcp-gateway/...`.
 2. **If the harness exposes an MCP status command or view** (the harness-config
    "List installed" column — e.g. Claude Code's `claude mcp list`, Cursor/VS
    Code's MCP UI), use it to add live connection status per server. If none
@@ -583,10 +575,10 @@ local config is cleaned up and the OAuth cache is cleared.
    [references/harness-common.md](references/harness-common.md), under that
    harness's top-level key), and list every exact match by name with its scope.
    Then:
-   - Exactly one match → delete that entry.
-   - Present in both scopes (duplicate) → tell the user it exists in both and
-     ask whether to remove both or just one before editing either file.
-   - No match → say so; do not edit anything.
+    - Exactly one match → delete that entry.
+    - Present in both scopes (duplicate) → tell the user it exists in both and
+      ask whether to remove both or just one before editing either file.
+    - No match → say so; do not edit anything.
 
    Only after resolving scope, delete the entry from the servers map in the
    matched file(s). **If the harness file has a "Remove cleanup" section** (e.g.
@@ -598,22 +590,22 @@ local config is cleaned up and the OAuth cache is cleared.
    another scope would break auth for that surviving install. **This file
    contains secrets — never print, echo, or surface its contents when reading or
    editing it; operate on it by key only.** So:
-   - If no entry matched in step 1, skip this step entirely.
-   - If the deleted entry carried a `url` and no `command`, skip this step:
-     that shape caches no token, so a key of that name is a different
-     install's.
-   - If a matching entry remains in the other scope (user kept only one of a
-     duplicate), leave the cache key in place.
-   - Only when all matching project and user entries have been deleted (or the
-     user explicitly asks to clear cached credentials), read
-     `~/.jfrog/jfrogmcp.conf.json` and delete, from the `servers` object, the key
-     equal to this MCP's `spec.packageName` (the same identifier used as the JSON
-     key of the config entry you removed above). If that exact key is absent, do
-     nothing — do NOT guess or delete a similarly-named key. Then write the file
-     back. Reading the KEY NAMES under `servers` to locate the match is allowed;
-     what is forbidden is printing, echoing, quoting, or summarizing any VALUE in
-     the file, or surfacing the surrounding entries — read the minimum needed to
-     locate the key and remove it. If the file is absent, skip silently.
+    - If no entry matched in step 1, skip this step entirely.
+    - If the deleted entry carried a `url` and no `command`, skip this step:
+      that shape caches no token, so a key of that name is a different
+      install's.
+    - If a matching entry remains in the other scope (user kept only one of a
+      duplicate), leave the cache key in place.
+    - Only when all matching project and user entries have been deleted (or the
+      user explicitly asks to clear cached credentials), read
+      `~/.jfrog/jfrogmcp.conf.json` and delete, from the `servers` object, the key
+      equal to this MCP's `spec.packageName` (the same identifier used as the JSON
+      key of the config entry you removed above). If that exact key is absent, do
+      nothing — do NOT guess or delete a similarly-named key. Then write the file
+      back. Reading the KEY NAMES under `servers` to locate the match is allowed;
+      what is forbidden is printing, echoing, quoting, or summarizing any VALUE in
+      the file, or surfacing the surrounding entries — read the minimum needed to
+      locate the key and remove it. If the file is absent, skip silently.
 3. **Mandatory:** tell the user the exact restart action from the harness's
    **Restart** column (per [references/harness-common.md](references/harness-common.md))
    — not just "restart the agent" — so the removed entry stops loading.
