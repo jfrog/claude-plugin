@@ -267,6 +267,20 @@ check("the governed hooks bound their fetch so a dead registry gives up quickly"
   }
 });
 
+// UNQUOTED on purpose: when jf-default-server.mjs prints nothing, the substitution must vanish so
+// agent-guard resolves the server itself as before. Quoted, an empty result becomes `--server ""`,
+// which agent-guard reads as "no server set".
+const DEFAULT_SERVER_SUBST = '$(node "${CLAUDE_PLUGIN_ROOT}/modules/core/jf-default-server.mjs")';
+check("the governed hooks end with the UNQUOTED jf-default-server substitution", () => {
+  for (const event of GOVERNED_EVENTS) {
+    const cmd = commandFor(event);
+    assert(!/"\$\(node [^)]*jf-default-server\.mjs[^)]*\)"/.test(cmd),
+      `${event} must not quote the substitution: an empty result would become --server "", which agent-guard treats as "no server set" and changes behaviour`);
+    assert(cmd.endsWith(` ${DEFAULT_SERVER_SUBST}`),
+      `${event} must end with: ${DEFAULT_SERVER_SUBST}`);
+  }
+});
+
 check("the two governed hooks run byte-identical commands", () => {
   assert(commandFor("PreToolUse") === commandFor("UserPromptExpansion"),
     "PreToolUse and UserPromptExpansion must enforce identically; they have drifted apart");
@@ -297,6 +311,31 @@ for (const event of GOVERNED_EVENTS) {
     assert(seen.argv.includes("@jfrog/agent-guard"),
       `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
   });
+
+  // Not vendored yet, so the real module is absent here: CLAUDE_PLUGIN_ROOT is pointed at a
+  // sandbox holding a stub helper instead. The real module is tested in jfrog-agent-hooks.
+  for (const [label, helperOutput, expectServer] of [
+    ["passes --server <id> as the final arguments when the helper prints one", "--server srv1", "srv1"],
+    ["passes no --server when the helper prints nothing", "", null],
+  ]) {
+    await check(`${event}: ${label}`, async () => {
+      const root = path.join(sandbox, `plugin-root-${event}-${expectServer ?? "none"}`);
+      mkdirSync(path.join(root, "modules", "core"), { recursive: true });
+      writeFileSync(path.join(root, "modules", "core", "jf-default-server.mjs"),
+        `process.stdout.write(${JSON.stringify(helperOutput)});\n`);
+      const record = stubNpx({ stdout: "" });
+      const r = runHookCommand(commandFor(event), "{}", { extraEnv: { CLAUDE_PLUGIN_ROOT: root } });
+      assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
+      const { argv } = JSON.parse(readFileSync(record, "utf8"));
+      if (expectServer) {
+        assert(argv.slice(-2).join(" ") === `--server ${expectServer}`,
+          `argv must end with --server ${expectServer}: ${argv}`);
+      } else {
+        assert(!argv.includes("--server"), `no --server expected for an empty helper result: ${argv}`);
+        assert(!argv.includes(""), `an empty argument leaked into argv (the substitution was quoted?): ${JSON.stringify(argv)}`);
+      }
+    });
+  }
 
   await check(`${event}: forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)`, async () => {
     const deny = `{"hookSpecificOutput":{"hookEventName":"${event}","permissionDecision":"deny","permissionDecisionReason":"nope"}}`;
