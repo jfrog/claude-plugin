@@ -53,7 +53,7 @@ export const RESULT = Object.freeze({
 });
 
 export const SCANNING_ENABLED_PATH =
-  "/aicatalog/api/v1/local-shadow/scanning-enabled";
+  "/aisec/api/v1/local-shadow/scanning-enabled";
 const REQUEST_TIMEOUT_MS = 30_000;
 export const HOOK_LOG_FILE = "local-shadow-hook.log";
 export const HOOK_LOG_MAX_BYTES = 5 * 1024 * 1024;
