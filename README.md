@@ -147,6 +147,43 @@ The hook soft-fails (never breaks the session): missing project key, Agent Guard
 
 ---
 
+## Local Shadow AI scan
+
+The plugin can report which AI assets (skills, plugins, MCP servers) are installed
+on a developer's workstation, so the organization can see what its developers'
+Claude Code environments run and spot unapproved or risky assets.
+
+**Who controls it.** The scan runs only when your JFrog Platform administrator has
+enabled it for your account. The plugin checks this on every new session
+(`GET /aisec/api/v1/local-shadow/scanning-enabled`). There is no per-user setting
+in the plugin: like other endpoint security controls, it is managed by the organization.
+[Off by default / On by default. CONFIRM.]
+
+**When it runs.** Once per new Claude Code session (not on resume, `/clear` or
+compaction), in the background, and only if you are logged in to the JFrog CLI with an
+access token over HTTPS.
+
+**What it sends.** One report per session to your organization's own JFrog Platform
+(`<your-platform>/aisec/api/v1/local-shadow/reports`). No scan data is sent to JFrog or
+any third party. The report contains:
+
+- A random workstation ID, generated once and stored in `~/.jfrog/shadow/workstation-id`
+- The Claude Code session ID, scan time and duration, plugin and scanner versions
+- For each skill: a content fingerprint, name and description
+- For each plugin: name, version, marketplace, source URL and git commit
+- For each MCP server: its URL (remote) or package name, version and registry (local)
+- The file path where each asset was found
+
+**What it scans.** `~/.claude`, `~/.claude.json`, and the `.claude/` folder and
+`.mcp.json` of each project listed in `~/.claude.json`. It reads these config files and
+sends only the fields listed above; it does not send source code, prompts, conversations
+or credentials.
+
+**Logs.** `~/.jfrog/shadow/local-shadow-hook.log` (whether the scan started and why not)
+and `~/.jfrog/shadow/local-shadow.log` (scan results).
+
+---
+
 ## Agent Package Resolution (Preview)
 
 > **Preview Notice:** This feature is in preview and licensed under the Apache License 2.0. For clarity: This software is provided "as-is" without warranty of any kind, and without support obligations or service level commitments. Behavior, APIs, conventions, and structure may change without notice between releases. JFrog makes no guarantees of backward compatibility during the preview release cycle. Use in production environments is at your own risk.
