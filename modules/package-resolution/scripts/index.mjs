@@ -11,7 +11,8 @@ import { orchestrateEagerSetup } from "./eager-setup.mjs";
 import { maybeSendAprHeartbeat } from "./apr-heartbeat.mjs";
 import { recordAprStatus } from "./apr-status.mjs";
 import {
-  maybeMigrateScaffoldEnabled,
+  maybeMigrateScaffold,
+  maybePruneScaffoldRepos,
   resolveOnboardingNudge,
 } from "./onboarding.mjs";
 
@@ -44,9 +45,9 @@ export const packageResolution = {
     // would activate APR the moment DISABLE is later removed, without consent.
     if (process.env.JF_AGENT_PACKAGE_RESOLUTION_DISABLE !== "1") {
       try {
-        maybeMigrateScaffoldEnabled();
+        maybeMigrateScaffold();
       } catch (err) {
-        log.warn("scaffold enabled migration failed", {
+        log.warn("scaffold migration failed", {
           error: err?.message ?? String(err),
         });
       }
@@ -92,6 +93,13 @@ export const packageResolution = {
     // blocks/breaks injection.
     let autoSetupStatus = "";
     if (flag.mode === "routing") {
+      try {
+        await maybePruneScaffoldRepos(ctx);
+      } catch (err) {
+        log.warn("scaffold prune failed", {
+          error: err?.message ?? String(err),
+        });
+      }
       autoSetupStatus = await orchestrateEagerSetup(ctx);
       // Daily best-effort `jf rt ping` (trigger=hook UA) so observability still
       // sees APR sessions when eager setup is skipped. Never throws.
