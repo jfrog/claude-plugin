@@ -153,9 +153,8 @@ The plugin can report which AI assets (skills, plugins, MCP servers) are install
 on a developer's workstation, so the organization can see what its developers'
 Claude Code environments run and spot unapproved or risky assets.
 
-**Who controls it.** The scan is on by default for JFrog Platform accounts entitled to
-the AI Catalog, and your JFrog Platform administrator can turn it off for the account.
-The plugin checks this on every new session
+**Who controls it.** The scan is off by default. It runs only when your JFrog Platform
+administrator has enabled it for your account. The plugin checks this on every new session
 (`GET /aisec/api/v1/local-shadow/scanning-enabled`). There is no per-user setting
 in the plugin: like other endpoint security controls, it is managed by the organization.
 
