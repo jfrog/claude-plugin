@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 import { test } from "node:test";
 
 import {
@@ -17,18 +18,14 @@ import {
   FORCE_ENV,
   OUTCOME,
   STRICT_ENV,
-  activeProjectFromSetupFile,
   buildAgentGuardRewriteArgs,
   buildNpxArgs,
   buildNpxSpawnOptions,
   computeRewriteFingerprint,
-  hasJfrogUrlTokenEnv,
   isRewriteDisabled,
   isSafeRewriteIdentifier,
   killRewriteChildTree,
-  parseJfConfigShowJson,
   parseRewriteMcpJsonResult,
-  pickDefaultJfCliServer,
   pipelineResult,
   quoteSpawnArgs,
   quoteWindowsArg,
@@ -38,19 +35,36 @@ import {
   resolveAgentGuardNpmRegistry,
   resolveAgentGuardSpec,
   resolveNpxCommand,
-  resolveRewriteProject,
-  resolveRewriteServer,
-  resolveRewriteServerId,
   runAgentGuardRewriteMcpJson,
   runRewriteMcpJsonPipeline,
 } from "../modules/core/rewrite-mcp-json.mjs";
 
-/** Minimal env for rewrite argv / pipeline happy paths. */
-const PROJ_SRV = { JF_PROJECT: "proj1", JF_SERVER: "my-server" };
+/** Project and server for rewrite argv builders. */
+const PROJ_SRV = { project: "proj1", serverId: "my-server" };
 
-/** Avoid real `jf config show` in unit tests. */
-function noJfConfig() {
-  return () => ({ status: 1, stdout: "" });
+/** Default AI Governance entry matching PROJ_SRV. */
+const AIG_SERVERS = {
+  "my-server": {
+    jpdUrl: "https://acme.jfrog.io",
+    isDefault: true,
+    currentActiveProject: "proj1",
+  },
+};
+
+/**
+ * Env whose JFROG_CLI_HOME_DIR holds a setup.json with `servers` (v2 by
+ * default), so the resolver never reads or migrates the real ~/.jfrog.
+ * @param {Record<string, unknown>} [servers]
+ * @param {Record<string, string>} [extra]
+ * @param {number} [version]
+ */
+function aigEnv(servers = AIG_SERVERS, extra = {}, version = 2) {
+  const dir = mkdtempSync(path.join(tmpdir(), "rewrite-aig-"));
+  writeFileSync(
+    path.join(dir, "setup.json"),
+    JSON.stringify({ version, servers }),
+  );
+  return { JFROG_CLI_HOME_DIR: dir, ...extra };
 }
 
 /**
@@ -61,22 +75,6 @@ function noJfConfig() {
 function freshMarkerPath() {
   const dir = mkdtempSync(path.join(tmpdir(), "rewrite-marker-"));
   return path.join(dir, "rewrite.marker");
-}
-
-/**
- * @param {{ serverId: string, url?: string, isDefault?: boolean }[]} servers
- */
-function mockJfConfigShow(servers) {
-  return () => ({
-    status: 0,
-    stdout: JSON.stringify(
-      servers.map((s) => ({
-        serverId: s.serverId,
-        url: s.url ?? "",
-        isDefault: Boolean(s.isDefault),
-      })),
-    ),
-  });
 }
 
 /**
@@ -172,7 +170,8 @@ test("buildNpxArgs includes --rewrite-mcp-json paths, project, and --server", ()
   const base = buildNpxArgs({
     paths: [mcp],
     allowRoots: ["/tmp"],
-    env: { ...PROJ_SRV },
+    ...PROJ_SRV,
+    env: {},
   });
   assert.deepEqual(base.slice(0, 4), [
     "--yes",
@@ -194,10 +193,8 @@ test("buildNpxArgs includes --rewrite-mcp-json paths, project, and --server", ()
 
   const withFlags = buildNpxArgs({
     paths: [mcp],
-    env: {
-      ...PROJ_SRV,
-      JFROG_AGENT_GUARD_REPO: "https://example.com/npm/",
-    },
+    ...PROJ_SRV,
+    env: { JFROG_AGENT_GUARD_REPO: "https://example.com/npm/" },
   });
   assert.ok(withFlags.includes("--server"));
   assert.ok(withFlags.includes("my-server"));
@@ -228,31 +225,24 @@ test("buildAgentGuardRewriteArgs requires project, server, and paths", () => {
     () =>
       buildAgentGuardRewriteArgs({
         paths: [],
-        env: { ...PROJ_SRV },
+        ...PROJ_SRV,
       }),
     /at least one/,
   );
   assert.throws(
-    () =>
-      buildAgentGuardRewriteArgs({ paths: ["/x"], env: { JF_SERVER: "s" } }),
-    /JF_PROJECT/,
+    () => buildAgentGuardRewriteArgs({ paths: ["/x"], serverId: "s" }),
+    /--project/,
   );
   assert.throws(
-    () =>
-      buildAgentGuardRewriteArgs({
-        paths: ["/x"],
-        env: { JF_PROJECT: "p" },
-      }),
-    /JF_SERVER/,
+    () => buildAgentGuardRewriteArgs({ paths: ["/x"], project: "p" }),
+    /--server/,
   );
   assert.deepEqual(
     buildAgentGuardRewriteArgs({
       paths: ["/x/mcp.json"],
       allowRoots: ["/x"],
-      env: {
-        ...PROJ_SRV,
-        JFROG_AGENT_GUARD_REPO: "https://example.com/npm/",
-      },
+      ...PROJ_SRV,
+      env: { JFROG_AGENT_GUARD_REPO: "https://example.com/npm/" },
     }),
     [
       "--rewrite-mcp-json",
@@ -271,30 +261,11 @@ test("buildAgentGuardRewriteArgs requires project, server, and paths", () => {
   );
 });
 
-test("buildAgentGuardRewriteArgs always passes --server even with URL+token env", () => {
-  assert.equal(
-    hasJfrogUrlTokenEnv({
-      JFROG_URL: "https://mycompany.jfrog.io",
-      JFROG_ACCESS_TOKEN: "tok",
-    }),
-    true,
-  );
-  const args = buildAgentGuardRewriteArgs({
-    paths: ["/tmp/mcp.json"],
-    env: {
-      ...PROJ_SRV,
-      JFROG_URL: "https://mycompany.jfrog.io",
-      JFROG_ACCESS_TOKEN: "tok",
-    },
-  });
-  assert.ok(args.includes("--server"));
-  assert.ok(args.includes("my-server"));
-});
-
 test("Agent Guard rewrite argv uses --rewrite-mcp-json not legacy flag names", () => {
   const args = buildAgentGuardRewriteArgs({
     paths: ["/tmp/mcp.json"],
-    env: { ...PROJ_SRV },
+    ...PROJ_SRV,
+    env: {},
   });
   assert.equal(args[0], "--rewrite-mcp-json");
   assert.ok(!args.includes("--align-mcp-json"));
@@ -316,7 +287,8 @@ test("resolveAgentGuardBin trims and treats blank as unset", () => {
 test("resolveAgentGuardCommand uses npx by default", () => {
   const resolved = resolveAgentGuardCommand({
     paths: ["/tmp/mcp.json"],
-    env: { ...PROJ_SRV },
+    ...PROJ_SRV,
+    env: {},
     platform: "darwin",
   });
   assert.equal(resolved.command, "npx");
@@ -329,11 +301,9 @@ test("resolveAgentGuardCommand runs local binary directly when overridden", () =
   const resolved = resolveAgentGuardCommand({
     paths: ["/tmp/mcp.json"],
     allowRoots: ["/tmp"],
-    env: {
-      [AGENT_GUARD_BIN_ENV]: "/opt/agent-guard",
-      JF_PROJECT: "p",
-      JF_SERVER: "srv",
-    },
+    project: "p",
+    serverId: "srv",
+    env: { [AGENT_GUARD_BIN_ENV]: "/opt/agent-guard" },
     platform: "darwin",
   });
   assert.equal(resolved.command, "/opt/agent-guard");
@@ -354,238 +324,14 @@ test("resolveAgentGuardCommand runs local binary directly when overridden", () =
   assert.ok(!resolved.args.some((a) => a.includes(AGENT_GUARD_PACKAGE)));
 });
 
-test("activeProjectFromSetupFile reads currentActiveProject", () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "rewrite-setup-"));
-  const setupPath = path.join(dir, "setup.json");
-  writeFileSync(
-    setupPath,
-    JSON.stringify({
-      version: 1,
-      servers: {
-        "my-server": {
-          jpdUrl: "https://mycompany.jfrog.io",
-          currentActiveProject: "from-setup",
-        },
-        other: {
-          jpdUrl: "https://other.jfrog.io",
-          currentActiveProject: "other-proj",
-        },
-      },
-    }),
-    "utf8",
-  );
-
-  assert.equal(
-    activeProjectFromSetupFile("my-server", "https://mycompany.jfrog.io", {
-      setupPath,
-    }),
-    "from-setup",
-  );
-  assert.equal(
-    activeProjectFromSetupFile("my-server", "", { setupPath }),
-    "from-setup",
-  );
-  assert.equal(
-    activeProjectFromSetupFile("", "https://other.jfrog.io", { setupPath }),
-    "other-proj",
-  );
-  assert.equal(
-    activeProjectFromSetupFile("missing", "https://mycompany.jfrog.io", {
-      setupPath,
-    }),
-    "from-setup",
-  );
-  assert.equal(
-    activeProjectFromSetupFile("nope", "https://nowhere.jfrog.io", {
-      setupPath,
-    }),
-    "",
-  );
-});
-
-test("resolveRewriteProject prefers env then setup.json", () => {
-  assert.equal(resolveRewriteProject({ JF_PROJECT: " from-env " }), "from-env");
-  assert.equal(resolveRewriteProject({ JFROG_PROJECT: "alt" }), "alt");
-
-  const dir = mkdtempSync(path.join(tmpdir(), "rewrite-proj-"));
-  const setupPath = path.join(dir, "setup.json");
-  writeFileSync(
-    setupPath,
-    JSON.stringify({
-      version: 1,
-      servers: {
-        srv: {
-          jpdUrl: "https://mycompany.jfrog.io",
-          currentActiveProject: "from-setup",
-        },
-      },
-    }),
-    "utf8",
-  );
-  assert.equal(
-    resolveRewriteProject(
-      {},
-      {
-        serverId: "srv",
-        jpdUrl: "https://mycompany.jfrog.io",
-        setupPath,
-      },
-    ),
-    "from-setup",
-  );
-  assert.equal(
-    resolveRewriteProject(
-      { JF_PROJECT: "env-wins" },
-      { serverId: "srv", setupPath },
-    ),
-    "env-wins",
-  );
-});
-
-test("parseJfConfigShowJson and pickDefaultJfCliServer", () => {
-  assert.deepEqual(parseJfConfigShowJson(""), []);
-  assert.deepEqual(parseJfConfigShowJson("not-json"), []);
-  assert.deepEqual(
-    parseJfConfigShowJson(
-      JSON.stringify([
-        { serverId: "a", url: "https://a.jfrog.io/", isDefault: false },
-        { serverId: "b", Url: "https://b.jfrog.io", isDefault: true },
-      ]),
-    ),
-    [
-      { serverId: "a", jpdUrl: "https://a.jfrog.io", isDefault: false },
-      { serverId: "b", jpdUrl: "https://b.jfrog.io", isDefault: true },
-    ],
-  );
-
-  assert.deepEqual(pickDefaultJfCliServer([]), { error: "missing" });
-  assert.deepEqual(
-    pickDefaultJfCliServer([
-      { serverId: "only", jpdUrl: "https://o.jfrog.io", isDefault: false },
-    ]),
-    { serverId: "only", jpdUrl: "https://o.jfrog.io" },
-  );
-  assert.deepEqual(
-    pickDefaultJfCliServer([
-      { serverId: "a", jpdUrl: "https://a.jfrog.io", isDefault: false },
-      { serverId: "b", jpdUrl: "https://b.jfrog.io", isDefault: true },
-    ]),
-    { serverId: "b", jpdUrl: "https://b.jfrog.io" },
-  );
-  assert.deepEqual(
-    pickDefaultJfCliServer([
-      { serverId: "a", jpdUrl: "https://a.jfrog.io", isDefault: false },
-      { serverId: "b", jpdUrl: "https://b.jfrog.io", isDefault: false },
-    ]),
-    { error: "no_default" },
-  );
-});
-
-test("resolveRewriteServer: hint, sole, default, env, ambiguous, missing", () => {
-  assert.deepEqual(
-    resolveRewriteServer(
-      {},
-      { serverIdHint: " hint-srv ", spawnSyncFn: noJfConfig() },
-    ),
-    { serverId: "hint-srv", jpdUrl: "" },
-  );
-
-  assert.deepEqual(
-    resolveRewriteServer(
-      {},
-      {
-        serverIdHint: "hint-srv",
-        spawnSyncFn: mockJfConfigShow([
-          {
-            serverId: "hint-srv",
-            url: "https://hint.jfrog.io",
-            isDefault: false,
-          },
-        ]),
-      },
-    ),
-    { serverId: "hint-srv", jpdUrl: "https://hint.jfrog.io" },
-  );
-
-  assert.deepEqual(
-    resolveRewriteServer(
-      {},
-      {
-        spawnSyncFn: mockJfConfigShow([
-          { serverId: "sole", url: "https://sole.jfrog.io" },
-        ]),
-      },
-    ),
-    { serverId: "sole", jpdUrl: "https://sole.jfrog.io" },
-  );
-
-  assert.deepEqual(
-    resolveRewriteServer(
-      {},
-      {
-        spawnSyncFn: mockJfConfigShow([
-          { serverId: "a", url: "https://a.jfrog.io", isDefault: false },
-          { serverId: "b", url: "https://b.jfrog.io", isDefault: true },
-        ]),
-      },
-    ),
-    { serverId: "b", jpdUrl: "https://b.jfrog.io" },
-  );
-
-  assert.deepEqual(
-    resolveRewriteServer(
-      { JF_SERVER: " from-env " },
-      {
-        spawnSyncFn: mockJfConfigShow([
-          { serverId: "a", url: "https://a.jfrog.io", isDefault: false },
-          { serverId: "from-env", url: "https://e.jfrog.io", isDefault: false },
-        ]),
-      },
-    ),
-    { serverId: "from-env", jpdUrl: "https://e.jfrog.io" },
-  );
-
-  assert.deepEqual(
-    resolveRewriteServer(
-      {},
-      {
-        spawnSyncFn: mockJfConfigShow([
-          { serverId: "a", url: "https://a.jfrog.io", isDefault: false },
-          { serverId: "b", url: "https://b.jfrog.io", isDefault: false },
-        ]),
-      },
-    ),
-    { error: "no_default" },
-  );
-
-  assert.deepEqual(resolveRewriteServer({}, { spawnSyncFn: noJfConfig() }), {
-    error: "missing",
-  });
-
-  // URL+token must not suppress server resolution.
-  assert.equal(
-    resolveRewriteServerId(
-      {
-        JFROG_URL: "https://mycompany.jfrog.io",
-        JFROG_ACCESS_TOKEN: "tok",
-        JF_SERVER: "keep-me",
-      },
-      { spawnSyncFn: noJfConfig() },
-    ),
-    "keep-me",
-  );
-});
-
 test("runAgentGuardRewriteMcpJson spawns the local binary when overridden", async () => {
   /** @type {{ command?: string, args?: string[], opts?: object }} */
   const spawned = {};
   const result = await runAgentGuardRewriteMcpJson({
     paths: ["/tmp/mcp.json"],
-    env: {
-      [AGENT_GUARD_BIN_ENV]: "/opt/agent-guard",
-      JF_PROJECT: "p",
-      JF_SERVER: "srv",
-    },
+    project: "p",
+    serverId: "srv",
+    env: { [AGENT_GUARD_BIN_ENV]: "/opt/agent-guard" },
     spawnFn: (command, args, opts) => {
       spawned.command = command;
       spawned.args = args;
@@ -618,11 +364,9 @@ test("runAgentGuardRewriteMcpJson skips cmd.exe for local bin on Windows", async
   const bin = String.raw`C:\Program Files\agent-guard\bin.exe`;
   const result = await runAgentGuardRewriteMcpJson({
     paths: [String.raw`C:\tmp\mcp.json`],
-    env: {
-      [AGENT_GUARD_BIN_ENV]: bin,
-      JF_PROJECT: "my-proj",
-      JF_SERVER: "srv",
-    },
+    project: "my-proj",
+    serverId: "srv",
+    env: { [AGENT_GUARD_BIN_ENV]: bin },
     platform: "win32",
     spawnFn: (command, args, opts) => {
       spawned.command = command;
@@ -715,7 +459,9 @@ test("buildAgentGuardRewriteArgs rejects unsafe project/server identifiers", () 
 test("runAgentGuardRewriteMcpJson soft-fails when Windows args contain CR/LF", async () => {
   const result = await runAgentGuardRewriteMcpJson({
     paths: ["/tmp/mcp.json"],
-    env: { JF_PROJECT: "evil\r\nwhoami", JF_SERVER: "srv" },
+    project: "evil\r\nwhoami",
+    serverId: "srv",
+    env: {},
     platform: "win32",
     spawnFn: () => assert.fail("must not spawn with CR/LF args"),
     timeoutMs: 0,
@@ -842,7 +588,9 @@ test("runAgentGuardRewriteMcpJson sets utf8 encoding on child streams", async ()
   const encodings = [];
   const result = await runAgentGuardRewriteMcpJson({
     paths: ["/tmp/mcp.json"],
-    env: { JF_PROJECT: "p", JF_SERVER: "srv" },
+    project: "p",
+    serverId: "srv",
+    env: {},
     spawnFn: () => {
       const child = new EventEmitter();
       const track = (stream) => {
@@ -872,7 +620,9 @@ test("runAgentGuardRewriteMcpJson sets utf8 encoding on child streams", async ()
 test("runAgentGuardRewriteMcpJson returns stdout summary", async () => {
   const result = await runAgentGuardRewriteMcpJson({
     paths: ["/tmp/mcp.json"],
-    env: { JF_PROJECT: "p", JF_SERVER: "srv" },
+    project: "p",
+    serverId: "srv",
+    env: {},
     spawnFn: mockSpawn({
       code: 0,
       stdout: JSON.stringify({ scanned: 1, rewritten: 1 }),
@@ -894,7 +644,9 @@ test("runAgentGuardRewriteMcpJson times out when child never closes", async () =
   try {
     result = await runAgentGuardRewriteMcpJson({
       paths: ["/tmp/mcp.json"],
-      env: { JF_PROJECT: "p", JF_SERVER: "srv" },
+      project: "p",
+      serverId: "srv",
+      env: {},
       platform: "linux",
       timeoutMs: 40,
       graceMs: 10,
@@ -962,10 +714,9 @@ test("computeRewriteFingerprint is stable for same inputs", () => {
 
 test("runRewriteMcpJsonPipeline no-ops when disabled", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { [DISABLE_ENV]: "1" },
+    env: aigEnv(AIG_SERVERS, { [DISABLE_ENV]: "1" }),
     discover: () => assert.fail("must not discover"),
     spawnFn: () => assert.fail("must not spawn"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => assert.fail("must not check"),
   });
   assert.equal(result.exitCode, 0);
@@ -974,10 +725,9 @@ test("runRewriteMcpJsonPipeline no-ops when disabled", async () => {
 
 test("runRewriteMcpJsonPipeline soft no-ops when agent-guard check is disabled", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     spawnFn: () => assert.fail("must not spawn"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => ({
       code: 1,
       reason: "Disabled: test",
@@ -989,10 +739,9 @@ test("runRewriteMcpJsonPipeline soft no-ops when agent-guard check is disabled",
 
 test("runRewriteMcpJsonPipeline soft no-ops when registry disabled (exit 2)", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     spawnFn: () => assert.fail("must not spawn"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => ({
       code: 2,
       reason: "RegistryDisabled: test",
@@ -1006,11 +755,10 @@ test("runRewriteMcpJsonPipeline soft no-ops when checkFn throws", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "rewrite-gate-throw-"));
   const markerPath = path.join(dir, "rewrite.marker");
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     markerPath,
     spawnFn: () => assert.fail("must not spawn after gate throw"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => {
       throw new Error("gate boom");
     },
@@ -1024,11 +772,10 @@ test("runRewriteMcpJsonPipeline soft no-ops when checkFn rejects", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "rewrite-gate-reject-"));
   const markerPath = path.join(dir, "rewrite.marker");
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     markerPath,
     spawnFn: () => assert.fail("must not spawn after gate reject"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       Promise.reject(new Error("gate reject boom")),
   });
@@ -1040,11 +787,10 @@ test("runRewriteMcpJsonPipeline STRICT maps failed_gate to exitCode 1", async ()
   const dir = mkdtempSync(path.join(tmpdir(), "rewrite-gate-strict-"));
   const markerPath = path.join(dir, "rewrite.marker");
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV, [STRICT_ENV]: "1" },
+    env: aigEnv(AIG_SERVERS, { [STRICT_ENV]: "1" }),
     discover: () => ["/tmp/mcp.json"],
     markerPath,
     spawnFn: () => assert.fail("must not spawn after gate throw"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => {
       throw new Error("gate boom");
     },
@@ -1057,14 +803,13 @@ test("runRewriteMcpJsonPipeline soft no-ops when allowRoots function throws", as
   const dir = mkdtempSync(path.join(tmpdir(), "rewrite-allow-throw-"));
   const markerPath = path.join(dir, "rewrite.marker");
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     markerPath,
     allowRoots: () => {
       throw new Error("allowRoots boom");
     },
     spawnFn: () => assert.fail("must not spawn after allowRoots throw"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
   assert.equal(result.exitCode, 0);
@@ -1072,39 +817,57 @@ test("runRewriteMcpJsonPipeline soft no-ops when allowRoots function throws", as
   assert.match(result.reason, /allowRoots boom/);
 });
 
-test("runRewriteMcpJsonPipeline soft-skips when server missing", async () => {
-  const result = await runRewriteMcpJsonPipeline({
-    env: { JF_PROJECT: "p" },
-    discover: () => ["/tmp/mcp.json"],
-    spawnFn: () => assert.fail("must not spawn without server"),
-    spawnSyncFn: noJfConfig(),
-    runAgentGuardCheckFn: async () =>
-      assert.fail("must not gate without server"),
-  });
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.outcome, OUTCOME.SKIPPED_NO_SERVER);
-});
-
-test("runRewriteMcpJsonPipeline soft-skips when JF_PROJECT missing", async () => {
-  const result = await runRewriteMcpJsonPipeline({
-    env: { JF_SERVER: "srv" },
-    discover: () => ["/tmp/mcp.json"],
-    spawnFn: () => assert.fail("must not spawn without project"),
-    spawnSyncFn: noJfConfig(),
-    setupPath: path.join(tmpdir(), "rewrite-no-setup-missing.json"),
-    runAgentGuardCheckFn: async () =>
-      assert.fail("must not gate without project"),
-  });
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.outcome, OUTCOME.SKIPPED_NO_PROJECT);
+test("runRewriteMcpJsonPipeline soft-skips without a usable AI Governance config", async () => {
+  const cases = [
+    [
+      "no_project",
+      aigEnv({ srv: { jpdUrl: "https://a.jfrog.io", isDefault: true } }),
+      OUTCOME.SKIPPED_NO_PROJECT,
+    ],
+    [
+      "ambiguous",
+      aigEnv({
+        a: { jpdUrl: "https://a.jfrog.io", currentActiveProject: "p" },
+        b: { jpdUrl: "https://b.jfrog.io", currentActiveProject: "p" },
+      }),
+      OUTCOME.SKIPPED_NO_SERVER,
+    ],
+    ["missing", aigEnv({}), OUTCOME.SKIPPED_NO_SERVER],
+    [
+      "corrupt",
+      (() => {
+        const env = aigEnv({});
+        writeFileSync(path.join(env.JFROG_CLI_HOME_DIR, "setup.json"), "{nope");
+        return env;
+      })(),
+      OUTCOME.SKIPPED_NO_SERVER,
+    ],
+  ];
+  for (const [status, env, outcome] of cases) {
+    const result = await runRewriteMcpJsonPipeline({
+      env,
+      discover: () => ["/tmp/mcp.json"],
+      spawnFn: () => assert.fail(`must not spawn on ${status}`),
+      runAgentGuardCheckFn: async () =>
+        assert.fail(`must not gate on ${status}`),
+    });
+    assert.equal(result.exitCode, 0, status);
+    assert.equal(result.outcome, outcome, status);
+    assert.match(result.reason, new RegExp(status));
+  }
 });
 
 test("runRewriteMcpJsonPipeline soft-skips unsafe project/server identifiers", async () => {
   const unsafeProject = await runRewriteMcpJsonPipeline({
-    env: { JF_PROJECT: 'a"&calc&"b', JF_SERVER: "srv" },
+    env: aigEnv({
+      srv: {
+        jpdUrl: "https://a.jfrog.io",
+        isDefault: true,
+        currentActiveProject: 'a"&calc&"b',
+      },
+    }),
     discover: () => ["/tmp/does-not-exist-mcp.json"],
     spawnFn: () => assert.fail("must not spawn unsafe project"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate unsafe project"),
   });
@@ -1112,10 +875,15 @@ test("runRewriteMcpJsonPipeline soft-skips unsafe project/server identifiers", a
   assert.equal(unsafeProject.outcome, OUTCOME.SKIPPED_UNSAFE_PROJECT);
 
   const unsafeServer = await runRewriteMcpJsonPipeline({
-    env: { JF_PROJECT: "proj1", JF_SERVER: "%PATH%" },
+    env: aigEnv({
+      "%PATH%": {
+        jpdUrl: "https://a.jfrog.io",
+        isDefault: true,
+        currentActiveProject: "proj1",
+      },
+    }),
     discover: () => ["/tmp/does-not-exist-mcp.json"],
     spawnFn: () => assert.fail("must not spawn unsafe server"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate unsafe server"),
   });
@@ -1125,11 +893,10 @@ test("runRewriteMcpJsonPipeline soft-skips unsafe project/server identifiers", a
 
 test("runRewriteMcpJsonPipeline soft-fails when agent-guard exits non-zero", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/mcp.json"],
     allowRoots: ["/tmp"],
     spawnFn: mockSpawn({ code: 1, stderr: "boom" }),
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
@@ -1139,11 +906,10 @@ test("runRewriteMcpJsonPipeline soft-fails when agent-guard exits non-zero", asy
 
 test("runRewriteMcpJsonPipeline STRICT maps failed_spawn to exitCode 1", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV, [STRICT_ENV]: "1" },
+    env: aigEnv(AIG_SERVERS, { [STRICT_ENV]: "1" }),
     discover: () => ["/tmp/mcp.json"],
     allowRoots: ["/tmp"],
     spawnFn: mockSpawn({ code: 1, stderr: "boom" }),
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
@@ -1151,14 +917,16 @@ test("runRewriteMcpJsonPipeline STRICT maps failed_spawn to exitCode 1", async (
   assert.equal(result.outcome, OUTCOME.FAILED_SPAWN);
 });
 
-test("runRewriteMcpJsonPipeline uses serverIdHint for gate and always --server", async () => {
+test("runRewriteMcpJsonPipeline gates and rewrites with the AI Governance server, ignoring JFROG_URL", async () => {
   /** @type {string | undefined} */
   let gatedServerId;
   /** @type {string[] | undefined} */
   let spawnedArgs;
   const result = await runRewriteMcpJsonPipeline({
-    env: { JF_PROJECT: "proj1" },
-    serverIdHint: "hint-server",
+    env: aigEnv(AIG_SERVERS, {
+      JFROG_URL: "https://other.jfrog.io",
+      JFROG_ACCESS_TOKEN: "tok",
+    }),
     discover: () => ["/tmp/a/mcp.json"],
     markerPath: freshMarkerPath(),
     allowRoots: ["/tmp/a"],
@@ -1169,7 +937,6 @@ test("runRewriteMcpJsonPipeline uses serverIdHint for gate and always --server",
         stdout: JSON.stringify({ scanned: 1, rewritten: 1 }),
       })();
     },
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async (opts) => {
       gatedServerId = opts.serverId;
@@ -1178,37 +945,7 @@ test("runRewriteMcpJsonPipeline uses serverIdHint for gate and always --server",
   });
   assert.equal(result.exitCode, 0);
   assert.equal(result.outcome, OUTCOME.REWRITTEN);
-  assert.equal(gatedServerId, "hint-server");
-  assert.ok(spawnedArgs?.includes("--server"));
-  assert.ok(spawnedArgs?.includes("hint-server"));
-});
-
-test("runRewriteMcpJsonPipeline always passes --server even with URL+token", async () => {
-  /** @type {string[] | undefined} */
-  let spawnedArgs;
-  const result = await runRewriteMcpJsonPipeline({
-    env: {
-      ...PROJ_SRV,
-      JFROG_URL: "https://mycompany.jfrog.io",
-      JFROG_ACCESS_TOKEN: "tok",
-    },
-    discover: () => ["/tmp/a/mcp.json"],
-    markerPath: freshMarkerPath(),
-    allowRoots: ["/tmp/a"],
-    spawnFn: (command, args) => {
-      spawnedArgs = args;
-      return mockSpawn({
-        code: 0,
-        stdout: JSON.stringify({ scanned: 1, rewritten: 1 }),
-      })();
-    },
-    spawnSyncFn: noJfConfig(),
-    timeoutMs: 0,
-    runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
-  });
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.outcome, OUTCOME.REWRITTEN);
-  assert.ok(spawnedArgs?.includes("--server"));
+  assert.equal(gatedServerId, "my-server");
   assert.ok(spawnedArgs?.includes("my-server"));
 });
 
@@ -1216,7 +953,7 @@ test("runRewriteMcpJsonPipeline spawns rewrite with paths and allow-root", async
   /** @type {string[] | undefined} */
   let spawnedArgs;
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/a/mcp.json"],
     markerPath: freshMarkerPath(),
     allowRoots: ["/tmp/a"],
@@ -1227,7 +964,6 @@ test("runRewriteMcpJsonPipeline spawns rewrite with paths and allow-root", async
         stdout: JSON.stringify({ scanned: 1, rewritten: 1 }),
       })();
     },
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
@@ -1245,10 +981,9 @@ test("runRewriteMcpJsonPipeline spawns rewrite with paths and allow-root", async
 
 test("runRewriteMcpJsonPipeline skips gate when discover returns empty", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => [],
     spawnFn: () => assert.fail("must not spawn"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate with no mcp.json"),
   });
@@ -1258,12 +993,11 @@ test("runRewriteMcpJsonPipeline skips gate when discover returns empty", async (
 
 test("runRewriteMcpJsonPipeline soft no-ops when discover throws", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => {
       throw new Error("discover boom");
     },
     spawnFn: () => assert.fail("must not spawn after discover failure"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate after discover failure"),
   });
@@ -1273,12 +1007,11 @@ test("runRewriteMcpJsonPipeline soft no-ops when discover throws", async () => {
 
 test("runRewriteMcpJsonPipeline STRICT maps failed_discover to exitCode 1", async () => {
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV, [STRICT_ENV]: "1" },
+    env: aigEnv(AIG_SERVERS, { [STRICT_ENV]: "1" }),
     discover: () => {
       throw new Error("discover boom");
     },
     spawnFn: () => assert.fail("must not spawn after discover failure"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate after discover failure"),
   });
@@ -1292,7 +1025,7 @@ test("runRewriteMcpJsonPipeline resolves allowRoots from a function of paths", a
   /** @type {string[] | undefined} */
   let allowRootsArg;
   const result = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => ["/tmp/a/mcp.json", "/tmp/b/mcp.json"],
     markerPath: freshMarkerPath(),
     allowRoots: (paths) => {
@@ -1306,7 +1039,6 @@ test("runRewriteMcpJsonPipeline resolves allowRoots from a function of paths", a
         stdout: JSON.stringify({ scanned: 2, rewritten: 0 }),
       })();
     },
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
@@ -1318,31 +1050,18 @@ test("runRewriteMcpJsonPipeline resolves allowRoots from a function of paths", a
   assert.ok(spawnedArgs?.includes("/tmp/b"));
 });
 
-test("runRewriteMcpJsonPipeline uses project from setup.json when env unset", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "rewrite-pipe-setup-"));
-  const setupPath = path.join(dir, "setup.json");
-  writeFileSync(
-    setupPath,
-    JSON.stringify({
-      version: 1,
-      servers: {
-        "my-server": {
-          jpdUrl: "",
-          currentActiveProject: "setup-proj",
-        },
-      },
-    }),
-    "utf8",
-  );
-
+test("runRewriteMcpJsonPipeline rewrites from a v1 setup.json with a single entry", async () => {
   /** @type {string[] | undefined} */
   let spawnedArgs;
   const result = await runRewriteMcpJsonPipeline({
-    env: { JF_SERVER: "my-server" },
+    env: aigEnv(
+      { "my-server": { jpdUrl: "", currentActiveProject: "setup-proj" } },
+      {},
+      1,
+    ),
     discover: () => ["/tmp/a/mcp.json"],
     markerPath: freshMarkerPath(),
     allowRoots: ["/tmp/a"],
-    setupPath,
     spawnFn: (command, args) => {
       spawnedArgs = args;
       return mockSpawn({
@@ -1350,13 +1069,12 @@ test("runRewriteMcpJsonPipeline uses project from setup.json when env unset", as
         stdout: JSON.stringify({ scanned: 1, rewritten: 0 }),
       })();
     },
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
   assert.equal(result.exitCode, 0);
   assert.equal(result.outcome, OUTCOME.REWRITTEN);
-  assert.ok(spawnedArgs?.includes("--project"));
+  assert.ok(spawnedArgs?.includes("my-server"));
   assert.ok(spawnedArgs?.includes("setup-proj"));
 });
 
@@ -1375,11 +1093,10 @@ test("runRewriteMcpJsonPipeline skips when fingerprint marker is current", async
   writeFileSync(markerPath, `${fp}\n`, "utf8");
 
   const skipped = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV },
+    env: aigEnv(),
     discover: () => [mcpPath],
     markerPath,
     spawnFn: () => assert.fail("must not spawn when fingerprint current"),
-    spawnSyncFn: noJfConfig(),
     runAgentGuardCheckFn: async () =>
       assert.fail("must not gate when fingerprint current"),
   });
@@ -1389,7 +1106,7 @@ test("runRewriteMcpJsonPipeline skips when fingerprint marker is current", async
   /** @type {boolean} */
   let spawned = false;
   const forced = await runRewriteMcpJsonPipeline({
-    env: { ...PROJ_SRV, [FORCE_ENV]: "1" },
+    env: aigEnv(AIG_SERVERS, { [FORCE_ENV]: "1" }),
     discover: () => [mcpPath],
     markerPath,
     allowRoots: [dir],
@@ -1400,31 +1117,12 @@ test("runRewriteMcpJsonPipeline skips when fingerprint marker is current", async
         stdout: JSON.stringify({ scanned: 1, rewritten: 0 }),
       })();
     },
-    spawnSyncFn: noJfConfig(),
     timeoutMs: 0,
     runAgentGuardCheckFn: async () => ({ code: 0, reason: "Enabled: test" }),
   });
   assert.equal(forced.exitCode, 0);
   assert.equal(forced.outcome, OUTCOME.REWRITTEN);
   assert.equal(spawned, true);
-});
-
-test("runRewriteMcpJsonPipeline soft-skips when only setup project is missing", async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), "rewrite-pipe-bad-"));
-  const invalidPath = path.join(dir, "mcp.json");
-  writeFileSync(invalidPath, "not json at all", "utf8");
-
-  const result = await runRewriteMcpJsonPipeline({
-    env: { JF_SERVER: "srv" },
-    discover: () => [invalidPath],
-    setupPath: path.join(dir, "no-setup.json"),
-    spawnFn: () => assert.fail("must not spawn without project"),
-    spawnSyncFn: noJfConfig(),
-    runAgentGuardCheckFn: async () =>
-      assert.fail("must not gate without project"),
-  });
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.outcome, OUTCOME.SKIPPED_NO_PROJECT);
 });
 
 const agentGuardBinForContract = process.env.JFROG_AGENT_GUARD_BIN?.trim();
@@ -1469,11 +1167,11 @@ test(
     const result = await runAgentGuardRewriteMcpJson({
       paths: [mcpPath],
       allowRoots: [dir],
+      project: "proj1",
+      serverId: "default",
       env: {
         ...process.env,
         [AGENT_GUARD_BIN_ENV]: agentGuardBinForContract,
-        JF_PROJECT: process.env.JF_PROJECT?.trim() || "proj1",
-        JF_SERVER: process.env.JF_SERVER?.trim() || "default",
       },
       timeoutMs: 30_000,
     });
