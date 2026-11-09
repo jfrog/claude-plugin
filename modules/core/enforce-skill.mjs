@@ -230,7 +230,12 @@ export function resolveEnforceSpawn(opts) {
     opts.client,
   );
 
-  const server = ["--server", opts.serverId ?? ""];
+  // Agent Guard picks its command by scanning argv for `--` names, so an id
+  // like `--login` is sent empty rather than run as a command.
+  const server = [
+    "--server",
+    opts.serverId && !opts.serverId.startsWith("--") ? opts.serverId : "",
+  ];
   if (platform !== "win32") {
     return {
       command: "npx",
@@ -283,6 +288,8 @@ export function resolveEnforceSpawn(opts) {
  * @returns {Promise<number>}
  */
 export function runEnforceSkill(opts = {}) {
+  // First, so the deadline counts from the hook's start.
+  const nowSec = opts.nowSec ?? Math.floor(Date.now() / 1000);
   const argv = opts.argv ?? process.argv.slice(2);
   const stdin = opts.stdin ?? process.stdin;
   const stdout = opts.stdout ?? process.stdout;
@@ -317,7 +324,7 @@ export function runEnforceSkill(opts = {}) {
         ...parseEnforceArgs(argv),
         serverId: aiGovernanceServerId(env),
         env,
-        nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
+        nowSec,
         platform: opts.platform,
         execPath: opts.execPath,
         exists: opts.exists,
