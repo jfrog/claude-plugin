@@ -260,6 +260,17 @@ For Agent Guard / MCP Registry issues, see the [JFrog MCP Registry troubleshooti
 
 ---
 
+## Telemetry
+
+At the start of each session, the plugin sends a small lifecycle event (install, update, or a daily active event) so JFrog can count installs per coding assistant and version. The event holds no prompts, code, file paths, usernames, or tokens. To turn it off, set any one of these:
+
+- `JF_AGENT_TELEMETRY_DISABLE=1` or `DO_NOT_TRACK=1` in the environment the coding assistant starts with (only `1` counts).
+- `"telemetry": { "enabled": false }` in `~/.jfrog/agents-conf.json` (administrators can deploy it across the organization). On Claude Code, administrators can also push `JF_AGENT_TELEMETRY_DISABLE=1` through the `env` block of managed settings.
+
+See [Plugin telemetry](docs/plugin-telemetry.md) for what is sent, where it goes, and the details.
+
+---
+
 ## Updating the vendored skills
 
 The `skills/` tree is vendored from [`jfrog/jfrog-skills`](https://github.com/jfrog/jfrog-skills) at the version pinned in [`.github/scripts/sync-skills-vendor.json`](.github/scripts/sync-skills-vendor.json). To pull a newer upstream release into this repo:
