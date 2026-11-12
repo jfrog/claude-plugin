@@ -124,6 +124,80 @@ export function defaultRewriteMarkerPath(env = process.env) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * @param {string} [url]
+ * @returns {string}
+ */
+export function normalizeJpdUrl(url) {
+  return String(url ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
+/**
+ * Parse `jf config show --format=json` into a server list.
+ * The telemetry worker also parses jfrog-cli.conf.v6 with it, which holds
+ * tokens: keep the result to these three fields, never a secret.
+ * @param {string} stdout
+ * @returns {{ serverId: string, jpdUrl: string, isDefault: boolean }[]}
+ */
+export function parseJfConfigShowJson(stdout) {
+  if (typeof stdout !== "string" || !stdout.trim()) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return [];
+  }
+  const list = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.servers)
+      ? parsed.servers
+      : parsed
+        ? [parsed]
+        : [];
+  /** @type {{ serverId: string, jpdUrl: string, isDefault: boolean }[]} */
+  const out = [];
+  for (const s of list) {
+    if (!isPlainObject(s)) continue;
+    const serverId = String(s.serverId ?? "").trim();
+    if (!serverId) continue;
+    const jpdUrl = normalizeJpdUrl(
+      s.url || s.Url || s.artifactoryUrl || s.platformUrl || "",
+    );
+    out.push({
+      serverId,
+      jpdUrl,
+      isDefault: Boolean(s.isDefault),
+    });
+  }
+  return out;
+}
+
+/**
+ * Exactly one server, or the isDefault entry. Otherwise { error }.
+ * @param {{ serverId: string, jpdUrl: string, isDefault: boolean }[]} servers
+ * @returns {{ serverId: string, jpdUrl: string } | { error: "missing" | "no_default" }}
+ */
+export function pickDefaultJfCliServer(servers) {
+  const list = servers ?? [];
+  if (list.length === 0) return { error: "missing" };
+  if (list.length === 1) {
+    return { serverId: list[0].serverId, jpdUrl: list[0].jpdUrl };
+  }
+  const def = list.find((s) => s.isDefault);
+  if (def) return { serverId: def.serverId, jpdUrl: def.jpdUrl };
+  return { error: "no_default" };
+}
+
+/**
  * @param {NodeJS.Platform} [platform]
  */
 export function resolveNpxCommand(platform = process.platform) {

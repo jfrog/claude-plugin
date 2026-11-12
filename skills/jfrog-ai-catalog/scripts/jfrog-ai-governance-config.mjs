@@ -52,7 +52,7 @@ Commands:
                              Project omitted: keep the saved one.
                              Project "": save none.
   server-id                  Print only the server id, for command substitution.
-                             Prints nothing if the id contains invalid characters.
+                             Prints nothing if the id is invalid (see set).
                              Always exits 0.
 
 Options:
@@ -81,11 +81,11 @@ const DEPRECATED_ENV = [
   "JF_SERVER_ID",
 ];
 const NOOP_LOG = { debug() {} };
-// Same safe charset the hooks require for project keys passed to agent-guard.
-const PROJECT_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-// Git Bash rewrites path-like arguments (/ \) and cmd.exe re-parses the npx
-// shim (& %), so such an id can't safely go into a hook command line.
-const UNSAFE_SERVER_ID = /[/\\&%]/;
+// The charset the hooks accept for ids passed to agent-guard. The jf CLI does
+// not limit server ids (it only rejects delete, use, show, clear): enforced here.
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SAFE_ID_RULE =
+  'letters, digits, ".", "_" or "-", starting with a letter or digit, at most 128 characters';
 
 // import.meta.url is symlink-resolved, argv[1] is not; compare real paths.
 function isMainModule(moduleUrl) {
@@ -307,10 +307,16 @@ export function setAiGovernanceConfig(
   project,
   { force = false, env = process.env, log = NOOP_LOG } = {},
 ) {
-  if (nonEmpty(project) && !PROJECT_KEY.test(project)) {
+  if (nonEmpty(project) && !SAFE_ID.test(project)) {
     return {
       ok: false,
-      error: `invalid project key ${JSON.stringify(project)}`,
+      error: `invalid project key ${JSON.stringify(project)}: ${SAFE_ID_RULE}`,
+    };
+  }
+  if (!SAFE_ID.test(serverId)) {
+    return {
+      ok: false,
+      error: `invalid server id ${JSON.stringify(serverId)}: ${SAFE_ID_RULE}; re-add the server to the jf CLI under a valid id`,
     };
   }
   const path = aiGovernanceConfigPath(env);
@@ -326,10 +332,13 @@ export function setAiGovernanceConfig(
   }
   const current = select(entries);
   const previous = entries.find(([id]) => id === serverId)?.[1];
-  const existing = current?.entry.currentActiveProject;
+  // The project to protect is the target's own; it matters only when there is
+  // no default or the target is the default.
+  const existing = previous?.currentActiveProject;
+  const currentProject = current?.entry.currentActiveProject;
   log.debug(
     current
-      ? `current default: "${current.id}" (${nonEmpty(existing) ? `project "${existing}"` : "no project"})`
+      ? `current default: "${current.id}" (${nonEmpty(currentProject) ? `project "${currentProject}"` : "no project"})`
       : "no current default",
   );
   if (current && current.id !== serverId) {
@@ -340,7 +349,11 @@ export function setAiGovernanceConfig(
       );
     }
     log.debug(`switching default "${current.id}" -> "${serverId}" (--force)`);
-  } else if (current && project !== undefined && project !== (existing ?? "")) {
+  } else if (
+    previous &&
+    project !== undefined &&
+    project !== (existing ?? "")
+  ) {
     if (!force && nonEmpty(existing)) {
       const change = nonEmpty(project) ? `setting "${project}"` : "clearing it";
       return refuse(
@@ -348,7 +361,11 @@ export function setAiGovernanceConfig(
         log,
       );
     }
-    log.debug(`setting project of "${serverId}" to "${project}"`);
+    log.debug(
+      nonEmpty(project)
+        ? `setting project of "${serverId}" to "${project}"`
+        : `clearing project of "${serverId}"`,
+    );
   } else if (current) {
     log.debug(`"${serverId}" is already the default; refreshing`);
   } else {
@@ -434,9 +451,9 @@ function main(argv, env) {
     try {
       const cfg = resolveAiGovernanceConfig({ env, log });
       if (cfg.status === "ok" || cfg.status === "no_project") {
-        if (UNSAFE_SERVER_ID.test(cfg.serverId)) {
+        if (!SAFE_ID.test(cfg.serverId)) {
           log.debug(
-            `server-id: "${cfg.serverId}" not printed; Windows shells would rewrite it`,
+            `server-id: ${JSON.stringify(cfg.serverId)} not printed: invalid id (${SAFE_ID_RULE})`,
           );
         } else {
           process.stdout.write(`${cfg.serverId}\n`);
@@ -451,12 +468,12 @@ function main(argv, env) {
   const [serverId, project, ...extra] = rest.filter((a) => a !== "--force");
   const force = rest.includes("--force");
   const argsOk =
-    mode === "set" ? serverId !== undefined && !extra.length : !rest.length;
+    mode === "set" ? nonEmpty(serverId) && !extra.length : !rest.length;
   const stray = rest.some((a) => a.startsWith("-") && a !== "--force");
-  const badProject = nonEmpty(project) && !PROJECT_KEY.test(project);
+  const badProject = nonEmpty(project) && !SAFE_ID.test(project);
   if (badProject) {
     process.stderr.write(
-      `ai-governance-config: invalid project key ${JSON.stringify(project)}\n`,
+      `ai-governance-config: invalid project key ${JSON.stringify(project)}: ${SAFE_ID_RULE}\n`,
     );
   }
   if (

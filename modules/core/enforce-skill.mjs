@@ -13,7 +13,8 @@
 // On Windows it runs npm's npx-cli.js with node and no shell, so arguments
 // arrive intact. Only when npm is not beside node.exe does it fall back to
 // npx.cmd under cmd.exe, and then it refuses an argument cmd.exe cannot carry
-// (%, ", CR/LF) rather than mangle it.
+// (%, ", CR/LF) rather than mangle it, except the optional server id, which it
+// leaves out.
 //
 // Every other outcome (bad argv, spawn failure, signal, any other exit code)
 // fails open in the shape the client reads as "allow", see FAIL_OPEN. Agent
@@ -230,8 +231,7 @@ export function resolveEnforceSpawn(opts) {
     opts.client,
   );
 
-  // Agent Guard picks its command by scanning argv for `--` names, so an id
-  // like `--login` is sent empty rather than run as a command.
+  // An id starting with `--` is sent empty.
   const server = [
     "--server",
     opts.serverId && !opts.serverId.startsWith("--") ? opts.serverId : "",

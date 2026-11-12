@@ -20,6 +20,7 @@ import { isMainEntry } from "./entry.mjs";
 import { jfInvocation } from "./jf-process.mjs";
 import { resolveAiGovernanceConfig } from "./jfrog-ai-governance-config.mjs";
 import { skillsProductUserAgent } from "./jf-user-agent.mjs";
+import { proxyFetch } from "./proxy-fetch.mjs";
 
 export const SETTINGS_PATH =
   "/ml/core/api/v1/administration/account-settings/mcp_gateway_plugin_enabled";
@@ -76,6 +77,7 @@ function makeDebug(env, debug) {
  *   env?: NodeJS.ProcessEnv,
  *   execFileSyncFn?: typeof execFileSync,
  *   debug?: (message: string) => void,
+ *   platform?: NodeJS.Platform,
  * }} [opts]
  * @returns {{ baseUrl: string, token: string, source: string } | null}
  */
@@ -96,6 +98,7 @@ export function resolveAgentGuardCredentials(opts = {}) {
     env,
     execFileSyncFn: opts.execFileSyncFn ?? execFileSync,
     debug,
+    platform: opts.platform,
   });
 }
 
@@ -105,13 +108,25 @@ export function resolveAgentGuardCredentials(opts = {}) {
  *   env?: NodeJS.ProcessEnv,
  *   execFileSyncFn?: typeof execFileSync,
  *   debug?: (message: string) => void,
+ *   platform?: NodeJS.Platform,
  * }} opts
  */
 function resolveFromCliConfig(opts) {
   const debug = opts.debug ?? (() => {});
   const env = opts.env ?? process.env;
   const execFn = opts.execFileSyncFn ?? execFileSync;
-  const invocation = jfInvocation(["config", "export", opts.serverId], { env });
+  const invocation = jfInvocation(["config", "export", opts.serverId], {
+    env,
+    platform: opts.platform,
+  });
+  if (!invocation.command) {
+    debug(
+      invocation.refused
+        ? `'jf config export' not run: ${invocation.refused} for cmd.exe`
+        : "'jf config export' skipped: jf not on PATH",
+    );
+    return null;
+  }
   let exported;
   try {
     exported = execFn(invocation.command, invocation.args, {
@@ -119,7 +134,7 @@ function resolveFromCliConfig(opts) {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 2000,
       windowsHide: true,
-      shell: false,
+      shell: invocation.shell,
       env,
     }).trim();
   } catch (error) {
@@ -174,7 +189,7 @@ function strip({ notFound: _notFound, ...result }) {
  */
 export async function isGatewayPluginEnabled(baseUrl, token, opts = {}) {
   const debug = opts.debug ?? (() => {});
-  const fetchFn = opts.fetchFn ?? fetch;
+  const fetchFn = opts.fetchFn ?? proxyFetch;
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
   const root = baseUrl.replace(/\/+$/, "").replace(/\/artifactory$/, "");

@@ -302,8 +302,8 @@ plain id, confirms it is still in the project's `--allowed-only` listing, and
 only then runs `jf skills update`. That file is untrusted (a project can commit
 its own copy), so never paste a value from it into a command.
 
-Resolve `<PROJECT>` per **Resolve the project** in `../SKILL.md` Prerequisites,
-then run the script with network access:
+With `<SID>` and `<PROJECT>` from *Prerequisites* in `../SKILL.md`,
+run the script with network access:
 
 ```bash
 node "<skill_path>/scripts/jfrog-update-skill.mjs" --slug '<slug>' --install-dir "<install-dir>" \
