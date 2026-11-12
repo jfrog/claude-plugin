@@ -4,17 +4,23 @@
 // https://www.apache.org/licenses/LICENSE-2.0
 
 // Tests the skill-enforcement hook wiring by executing the real command string out of hooks.json
-// against a stub npx. Two facts are load-bearing:
+// against a stub npx. The governed hooks start the shared node launcher,
+// modules/core/enforce-skill.mjs, vendored from JFrog agent hooks and never edited here. It
+// computes the deadline, bounds the npm fetch and spawns npx, so the hook string is only `node`
+// plus that file and runs on Windows without Git Bash. Its spawn plan and Windows paths are
+// tested where it is authored, in agent hooks. Two facts are load-bearing:
 //
 //   1. Exit 2 is the ONLY code Claude Code treats as a blocking PreToolUse error. 1, 127, spawn
 //      failures and a hook killed at the timeout are all non-blocking. So the hook must pass
 //      agent-guard's exit code through untouched: agent-guard's 2 blocks, everything else fails
 //      OPEN — which is the requirement, since a user who cannot run the guard is not governed by
-//      it and blocking them enforces nothing.
-//   2. npx ONLY, with no `command -v agent-guard` fast path: a binary earlier on PATH could be
-//      anything, whereas npx resolves the package from the configured registry. The registry is
-//      fixed (overridable only by JFROG_AGENT_GUARD_REPO); the package spec deliberately is not,
-//      because a check below forbids pinning the version of a security control.
+//      it and blocking them enforces nothing. For claude-code the launcher fails open as exit 1
+//      with no stdout and no text of its own, so what Claude Code shows the user is unchanged.
+//   2. npx ONLY (spawned by the launcher), with no `command -v agent-guard` fast path: a binary
+//      earlier on PATH could be anything, whereas npx resolves the package from the configured
+//      registry. The registry is fixed (overridable only by JFROG_AGENT_GUARD_REPO); the package
+//      spec deliberately is not, because a check below forbids pinning the version of a security
+//      control.
 //
 // Registry traffic is split between the hooks: the async SessionStart pre-warm resolves ONLINE and
 // is the only thing that pulls a newly published agent-guard into the cache; the governed hooks use
@@ -26,10 +32,11 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, w
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hooks = JSON.parse(readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
+const LAUNCHER_PATH = path.join(repoRoot, "modules", "core", "enforce-skill.mjs");
 const sandbox = mkdtempSync(path.join(tmpdir(), "enforce-hook-"));
 const binDir = path.join(sandbox, "bin");
 mkdirSync(binDir, { recursive: true });
@@ -43,14 +50,15 @@ mkdirSync(nodeDir, { recursive: true });
 symlinkSync(process.execPath, path.join(nodeDir, "node"));
 
 const RELEASES_REGISTRY = "https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/";
+const LAUNCHER_COMMAND =
+  'node "${CLAUDE_PLUGIN_ROOT}/modules/core/enforce-skill.mjs" --client claude-code --prefer-offline';
 const GOVERNED_EVENTS = ["PreToolUse", "UserPromptExpansion"];
-// Claude Code resolves `shell: "bash"` itself; here we only need A bash to execute the same
-// string. /bin/bash exists on macOS and Linux, which is where this validator runs.
+// On macOS and Linux Claude Code hands the hook string to a POSIX shell; /bin/bash exists on both,
+// which is where this validator runs.
 //
-// COVERAGE GAP, deliberate: CI runs on Ubuntu, so nothing here exercises Windows. A Windows
-// machine without Git Bash has no bash to resolve, the command never runs, and the action is
-// allowed unchecked (README lists Git for Windows as a prerequisite for that reason). Reproducing
-// it needs a Windows runner, not a different constant here.
+// COVERAGE GAP, deliberate: CI runs on Ubuntu, so nothing here EXECUTES the Windows path. The
+// launcher's Windows spawn (npm's npx-cli.js under node, or npx.cmd under cmd.exe) runs on
+// Windows runners in agent hooks, where the launcher is authored.
 const BASH = "/bin/bash";
 
 const failures = [];
@@ -78,7 +86,7 @@ const fs = require("node:fs");
 let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", () => {
-  fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin: input }));
+  fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin: input, deadline: process.env.JF_AGENT_GUARD_ENFORCE_DEADLINE ?? "", retries: process.env.npm_config_fetch_retries ?? "", fetchTimeout: process.env.npm_config_fetch_timeout ?? "" }));
   setTimeout(() => {
     if (${JSON.stringify(stdout)}) process.stdout.write(${JSON.stringify(stdout)});
     process.exit(${exitCode});
@@ -91,8 +99,8 @@ process.stdin.on("end", () => {
   return record;
 }
 
-// Run the hook exactly as Claude Code does for `shell: "bash"`: the command string from
-// hooks.json handed to bash -c, hook event JSON on stdin, with the env Claude Code supplies.
+// Run the hook as Claude Code does on macOS and Linux: the command string from hooks.json
+// handed to bash -c, hook event JSON on stdin, with the env Claude Code supplies.
 // `isolate` drops the stub bin dir from PATH, which is how the "npx is not installed at all"
 // case is reproduced.
 function runHookCommand(command, payload, { extraEnv = {}, isolate = false, timeoutMs = 30_000 } = {}) {
@@ -173,21 +181,28 @@ check("the governed hooks resolve from cache, so no Read pays a registry round t
   }
 });
 
+check("the governed hooks run the vendored shared launcher", () => {
+  // Read, not just stat: a missing vendored module means the sync to agent hooks is broken, and
+  // the hook would fail open on every call without anyone noticing.
+  readFileSync(LAUNCHER_PATH);
+});
+
 for (const event of GOVERNED_EVENTS) {
-  check(`${event} invokes agent-guard through npx only, with no plugin script in the path`, () => {
+  check(`${event} starts the node launcher, with no POSIX syntax in the hook string`, () => {
     const hs = hooksFor(event);
     assert(hs.length === 1, `expected exactly one ${event} hook, got ${hs.length}`);
     const h = hs[0];
-    assert(h.shell === "bash", `${event} must pin shell: "bash" so a missing Git Bash fails loudly`);
-    assert(!("args" in h), `${event} must use shell form: npx is a .cmd shim on Windows and cannot be spawned in exec form`);
-    // Leading `NAME=value` assignments are the fetch bounds asserted further down; past them
-    // the very first word must still be npx, with no wrapper or interpreter in between.
-    assert(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|\S+) )*npx /.test(h.command),
-      `${event} must invoke npx directly, got: ${h.command}`);
+    assert(h.command === LAUNCHER_COMMAND,
+      `${event} must be the node launcher. A POSIX env prefix or $(...) never starts on a Windows ` +
+      `machine without Git Bash. Got: ${h.command}`);
+    assert(!("shell" in h),
+      `${event} must not pin a shell: shell: "bash" fails on Windows without Git Bash, and the ` +
+      `launcher string runs under any shell`);
+    const beyondPluginRoot = h.command.replaceAll("${CLAUDE_PLUGIN_ROOT}", "");
+    assert(!beyondPluginRoot.includes("$"),
+      `${event} command must not use shell substitution other than the plugin-root token ` +
+      `Claude Code expands before the shell runs`);
     assert(!h.command.includes("command -v"), `${event} must not have a PATH fast path: a hijackable agent-guard earlier on PATH would win`);
-    assert(!/\.mjs["' ]*--enforce-skill|node .*enforce-skill/.test(h.command), `${event} must not route through a plugin wrapper script`);
-    assert(h.command.includes("--enforce-skill") && h.command.includes("--client claude-code"),
-      `${event} must pass --enforce-skill --client claude-code`);
     // The waiver request is agent-guard's own `--request-waiver` command now. The plugin used to
     // hand it the path to a Node helper it shipped; that script and its credential resolver are
     // gone, so passing the flag again would name a file that no longer exists.
@@ -200,8 +215,6 @@ for (const event of GOVERNED_EVENTS) {
     // policy decision, and `|| exit 2` made every one of them look like a block.
     assert(!/\|\|\s*exit\s+2/.test(h.command),
       `${event} must not force exit 2: npx/install/credential failures fail open, and agent-guard's own exit 2 already blocks`);
-    assert(h.command.includes(RELEASES_REGISTRY),
-      `${event} must default to the releases registry, so the artifact is the published one`);
   });
 }
 
@@ -222,47 +235,28 @@ check("both governed hooks allow for an npx cold start (timeout >= 30)", () => {
 // chosen independently let the sum overrun the hook timeout and turn a block into a silent allow.
 // Supplying the budget here makes one number drive both.
 //
-// Computed FRESH every invocation, as a BARE prefix assignment with no `${VAR:-…}` fallback. An
-// absolute instant is valid for one run only: `:-` substitutes solely when the variable is unset
-// or empty, so an exported value — a shell profile, a parent process, a CI runner — would pin
-// every later invocation to a deadline already in the past. agent-guard then floors the budget at
-// minEnforcementBudget, which a real JPD cannot answer within, and denies every governed skill
-// permanently. A bare prefix assignment beats the inherited environment, which is what makes it
-// safe. The operator knob is the DURATION form, which agent-guard takes as a lower bound; an
-// absolute deadline is not something an operator can usefully pin.
-check("the governed hooks compute the deadline fresh, with no inheritable fallback", () => {
+// The launcher computes it FRESH every invocation, as now + DEADLINE_SLACK_SEC, and overwrites
+// any inherited value. An absolute instant is valid for one run only: an exported value — a
+// shell profile, a parent process, a CI runner — would pin every later invocation to a deadline
+// already in the past. agent-guard then floors the budget at minEnforcementBudget, which a real
+// JPD cannot answer within, and denies every governed skill permanently. The behavioural checks
+// below assert the recompute; this one ties the launcher's slack to this file's hook timeout,
+// which is the one number the launcher cannot see.
+//
+// Deadline vs hook timeout ONLY. An earlier revision (432a6a9) also asserted
+// npm bound + agent-guard budget + render time <= timeout. That check is gone on purpose,
+// not by omission: its arithmetic was unsound, because npm_config_fetch_timeout is PER
+// REQUEST and a cold npx makes several plus a tarball download, so the "npm bound" term was
+// never a worst case and the sum it computed was not one either. The absolute deadline
+// subsumes what that sum was protecting — agent-guard stops at a wall-clock instant that
+// sits inside the timeout no matter how long npm took to get there.
+await check("the launcher's deadline falls inside the governed hooks' timeout", async () => {
+  const { DEADLINE_SLACK_SEC } = await import(pathToFileURL(LAUNCHER_PATH).href);
+  assert(Number.isFinite(DEADLINE_SLACK_SEC), "the launcher must export DEADLINE_SLACK_SEC");
   for (const event of GOVERNED_EVENTS) {
     for (const h of hooksFor(event)) {
-      const m = /JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\(\(\$\(date \+%s\) \+ (\d+)\)\)"/.exec(h.command);
-      assert(m, `${event} must pass JF_AGENT_GUARD_ENFORCE_DEADLINE="$(($(date +%s) + N))"`);
-      assert(!/JF_AGENT_GUARD_ENFORCE_DEADLINE="\$\{/.test(h.command),
-        `${event} must not allow an inherited deadline: a stale absolute instant pins every invocation to the past`);
-      // Deadline vs hook timeout ONLY. An earlier revision (432a6a9) also asserted
-      // npm bound + agent-guard budget + render time <= timeout. That check is gone on purpose,
-      // not by omission: its arithmetic was unsound, because npm_config_fetch_timeout is PER
-      // REQUEST and a cold npx makes several plus a tarball download, so the "npm bound" term was
-      // never a worst case and the sum it computed was not one either. The absolute deadline
-      // subsumes what that sum was protecting — agent-guard stops at a wall-clock instant that
-      // sits inside the timeout no matter how long npm took to get there.
-      const budgetS = Number(m[1]);
-      assert(budgetS < (h.timeout ?? 0),
-        `${event}: the deadline (+${budgetS}s) must fall inside the ${h.timeout}s hook timeout, or agent-guard is killed before it can write its verdict`);
-    }
-  }
-});
-
-check("the governed hooks bound their fetch so a dead registry gives up quickly", () => {
-  for (const event of GOVERNED_EVENTS) {
-    for (const h of hooksFor(event)) {
-      const retries = /npm_config_fetch_retries=(\d+)/.exec(h.command);
-      const fetchTimeout = /npm_config_fetch_timeout=(\d+)/.exec(h.command);
-      assert(retries && Number(retries[1]) === 0,
-        `${event} must set npm_config_fetch_retries=0: npm's default of 2 backs off 10s then 60s`);
-      // The VALUE, not just its presence: npm_config_fetch_timeout=300000 is npm's own default,
-      // so asserting presence alone would let an edit back to the default pass unnoticed. The
-      // bound has to stay well inside the hook timeout to be worth setting at all.
-      assert(fetchTimeout && Number(fetchTimeout[1]) <= 10_000,
-        `${event} must set npm_config_fetch_timeout <= 10000 (npm's default is 300000ms), got ${fetchTimeout?.[1]}`);
+      assert(DEADLINE_SLACK_SEC < (h.timeout ?? 0),
+        `${event}: the deadline (+${DEADLINE_SLACK_SEC}s) must fall inside the ${h.timeout}s hook timeout, or agent-guard is killed before it can write its verdict`);
     }
   }
 });
@@ -296,6 +290,22 @@ for (const event of GOVERNED_EVENTS) {
       `must default to the releases registry: ${seen.argv}`);
     assert(seen.argv.includes("@jfrog/agent-guard"),
       `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
+    assert(seen.argv.includes("--prefer-offline"), `${event} must read the npx cache: ${seen.argv}`);
+    // The VALUES, not just their presence: npm's defaults are 2 retries (backing off 10s then
+    // 60s) and a 300000ms fetch timeout, and either would outlast the hook.
+    assert(seen.retries === "0" && seen.fetchTimeout === "10000",
+      `fetch must be bounded: retries=${seen.retries} timeout=${seen.fetchTimeout}`);
+  });
+
+  await check(`${event}: hands agent-guard a deadline in the future, recomputed over an inherited one`, async () => {
+    const record = stubNpx({ stdout: "" });
+    const before = Math.floor(Date.now() / 1000);
+    const r = runHookCommand(commandFor(event), "{}", { extraEnv: { JF_AGENT_GUARD_ENFORCE_DEADLINE: "1" } });
+    assert(r.code === 0, `exit=${r.code} stderr=${r.stderr}`);
+    const seen = JSON.parse(readFileSync(record, "utf8"));
+    const deadline = Number(seen.deadline);
+    assert(Number.isFinite(deadline) && deadline > before,
+      `the deadline must be recomputed, not inherited; got ${JSON.stringify(seen.deadline)}`);
   });
 
   await check(`${event}: forwards a deny verdict's stdout verbatim and exits 0 (the JSON decides)`, async () => {
@@ -316,15 +326,24 @@ for (const event of GOVERNED_EVENTS) {
   // not governed by it, and blocking them enforces nothing except their inability to work. The hook
   // therefore does NOT convert failures into exit 2 — agent-guard's own exit code is the verdict,
   // and only agent-guard can tell a broken environment from a policy decision.
-  await check(`${event}: an agent-guard failure fails OPEN, not closed`, async () => {
-    stubNpx({ stdout: "", exitCode: 1 });
+  //
+  // The exact shape is exit 1 with no stdout and no launcher text on stderr. Exit 1 is what the
+  // bash one-liner surfaced before, so Claude Code's non-blocking-error message is unchanged;
+  // partial agent-guard output from the failed run must not reach Claude Code as a verdict.
+  const NOTICE = "[jfrog-agent-guard] skill governance did not run";
+  await check(`${event}: an agent-guard failure fails OPEN as exit 1, with no verdict and no added text`, async () => {
+    stubNpx({ stdout: `{"hookSpecificOutput":{"perm`, exitCode: 1 });
     const r = runHookCommand(commandFor(event), "{}");
-    assert(r.code !== 2, `exit 2 blocks; an internal failure must fail open, got exit=${r.code}`);
+    assert(r.code === 1 && r.stdout === "",
+      `an internal failure must fail open as exit 1 with no stdout, got exit=${r.code} stdout=${r.stdout}`);
+    assert(!r.stderr.includes(NOTICE), `claude-code must get no launcher notice: ${r.stderr}`);
   });
 
-  await check(`${event}: npx missing entirely fails OPEN`, async () => {
+  await check(`${event}: npx missing entirely fails OPEN as exit 1`, async () => {
     const r = runHookCommand(commandFor(event), "{}", { isolate: true });
-    assert(r.code !== 2, `a missing npx must not block, got exit=${r.code}`);
+    assert(r.code === 1 && r.stdout === "",
+      `a missing npx must fail open as exit 1 with no stdout, got exit=${r.code} stdout=${r.stdout}`);
+    assert(!r.stderr.includes(NOTICE), `claude-code must get no launcher notice: ${r.stderr}`);
   });
 
   // The header calls a hook killed at the client's timeout non-blocking. This EMULATES that kill
