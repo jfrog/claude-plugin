@@ -40,7 +40,7 @@ Before installing, make sure you have:
 - **JFrog host URL and access token** — Your JFrog platform URL and a valid access token.
 - **Claude Code CLI** (≥ 1.0) — The Claude Code CLI.
 - **Node.js** (≥ 18) — with `npx` on your `PATH` (used by the Agent Guard). Without it Skill Governance cannot run, and governed actions are allowed unchecked.
-- **Git Bash on Windows** — the Skill Governance hook runs as a Bash command so that it behaves identically on every platform. Install [Git for Windows](https://git-scm.com/downloads/win); without it the hook cannot run and governed actions are allowed unchecked. Not needed on macOS or Linux.
+- **Git Bash on Windows** (recommended) — the Skill Governance hooks run `node` with the bundled launcher, so they work without it. Only the once-per-session refresh of the Agent Guard cache is a Bash command. Without [Git for Windows](https://git-scm.com/downloads/win) that refresh does not run, and the hooks keep using the Agent Guard version `npx` first cached. Not needed on macOS or Linux.
 - **Skill runtime requirements** — `jf` CLI, `jq`, and `curl` on `PATH`, plus a configured JFrog instance. For the minimum versions, see the upstream skills [`Requirements`](https://github.com/jfrog/jfrog-skills/blob/main/README.md#requirements). Configure the CLI with `jf config add` — see [Authentication](#authentication).
 - **JFrog AI Catalog** (optional) — If you want to use the Agent Guard feature, your JFrog subscription needs to include the AI Catalog entitlement. Contact your JFrog account team if you're unsure whether it's enabled.
 - **JFrog CLI ≥ 2.105.0** (optional) — If you want the Agent Guard to auto-resolve the credentials/server ID from the JFrog CLI configuration. Older CLIs don't support the `--format` flag used by `jf config show` for this.
@@ -131,13 +131,13 @@ If a check fails, see [Recovery](#recovery). Fix the step `/jfrog-init` reports,
 
 On every Claude Code `SessionStart` (and when `installed_plugins.json` / `known_marketplaces.json` change), the plugin discovers installed-plugin `.mcp.json` paths under `$CLAUDE_CONFIG_DIR/plugins` (default `~/.claude`) — including marketplace live trees for string-source plugins — plus this plugin's own `.mcp.json` when present, and runs `npx @jfrog/agent-guard --rewrite-mcp-json` against those paths. Stdio MCP entries are rewritten to launch through Agent Guard; remote `url` / `http` / `sse` / `ws` entries are left unchanged. A fast SessionStart helper registers FileChanged `watchPaths` (skipped when the kill switch is on); the slower rewrite hook emits `/reload-plugins` guidance via `additionalContext` when files were updated.
 
+The rewrite and the Skill Governance hook use the server and project set by `/jfrog-init`.
+
 The hook soft-fails (never breaks the session): missing project key, Agent Guard gate failure, or rewrite errors log and exit 0. Concurrent rewrite invocations share a lock file and soft-skip with status `busy`.
 
 | Env | Purpose |
 | --- | --- |
 | `JF_AGENT_REWRITE_MCP_JSON_DISABLE=1` | Kill switch — skip rewrite and watchPaths registration |
-| `JF_PROJECT` / `JFROG_PROJECT` | Project key (also inferred from existing `_JF_ARGS project=` in discovered mcp.json) |
-| `JF_SERVER` / `JFROG_SERVER_ID` | Optional server ID for the gate / `--server` |
 | `JFROG_AGENT_GUARD_VERSION` | Override pinned `@jfrog/agent-guard` version |
 | `JFROG_AGENT_GUARD_REPO` | Private npm registry for `@jfrog/agent-guard` |
 | `JFROG_AGENT_GUARD_BIN` | Local Agent Guard binary (skips npx) |
