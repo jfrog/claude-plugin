@@ -145,7 +145,7 @@ The hook soft-fails (never breaks the session): missing project key, Agent Guard
 | `JF_REWRITE_MCP_JSON_LOCK_PATH` | Override rewrite concurrency lock file path |
 | `CLAUDE_CONFIG_DIR` | Claude config root (default `~/.claude`) |
 
-Every hook runs an exact version of `@jfrog/agent-guard` through `npx`, fetched from `https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/` (or `JFROG_AGENT_GUARD_REPO`): `1.23.0` for the MCP rewrite, and `1.26.0` for Skill Governance, the Local Shadow AI scan, and a background `agent-guard --version` at session start that caches it. Both are set in `modules/core/rewrite-mcp-json.mjs` and change only in a plugin release.
+Hooks run a pinned `@jfrog/agent-guard` through `npx` from `https://releases.jfrog.io/artifactory/api/npm/coding-agents-npm/` (or `JFROG_AGENT_GUARD_REPO`): `1.23.0` for the MCP rewrite, `1.26.0` for everything else. Both versions are set in `modules/core/rewrite-mcp-json.mjs`.
 
 ---
 
