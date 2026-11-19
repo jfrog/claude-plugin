@@ -19,11 +19,11 @@
 //   2. npx ONLY (spawned by the launcher), with no `command -v agent-guard` fast path: a binary
 //      earlier on PATH could be anything, whereas npx resolves the package from the configured
 //      registry. The registry is fixed (overridable only by JFROG_AGENT_GUARD_REPO); the package
-//      spec deliberately is not, because a check below forbids pinning the version of a security
-//      control.
+//      spec is GOVERNANCE_AGENT_GUARD_SPEC, an exact version, because the Claude plugin directory
+//      blocks a launcher without one.
 //
-// Registry traffic is split between the hooks: the async SessionStart pre-warm resolves ONLINE and
-// is the only thing that pulls a newly published agent-guard into the cache; the governed hooks use
+// Registry traffic is split between the hooks: the async SessionStart pre-warm puts the pinned
+// agent-guard in the npx cache; the governed hooks use
 // --prefer-offline, because PreToolUse fires on every Read and a round trip per Read is a tax paid
 // thousands of times for a resolution the pre-warm already did.
 
@@ -37,6 +37,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hooks = JSON.parse(readFileSync(path.join(repoRoot, "hooks", "hooks.json"), "utf8"));
 const LAUNCHER_PATH = path.join(repoRoot, "modules", "core", "enforce-skill.mjs");
+const { GOVERNANCE_AGENT_GUARD_SPEC } = await import(
+  pathToFileURL(path.join(repoRoot, "modules", "core", "rewrite-mcp-json.mjs")).href
+);
+const PREWARM_COMMAND = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/claude-prewarm-agent-guard.mjs"';
 const sandbox = mkdtempSync(path.join(tmpdir(), "enforce-hook-"));
 const binDir = path.join(sandbox, "bin");
 mkdirSync(binDir, { recursive: true });
@@ -155,21 +159,19 @@ check("hooks.json keeps the package-resolution SessionStart hook byte-identical"
   );
 });
 
-check("the npx cache pre-warm is async so it never delays session start", () => {
+await check("the npx cache pre-warm is async and fetches the pinned agent-guard with --version", async () => {
   // Found by content, not position: other features add SessionStart hooks, and an index pinned the
   // check to whichever hook happened to sit there.
-  const warm = (hooks.hooks.SessionStart[0].hooks ?? [])
-    .find((h) => (h.command ?? "").includes("@jfrog/agent-guard") && (h.command ?? "").includes("--version"));
-  assert(warm, "the agent-guard pre-warm SessionStart hook is missing");
+  const warm = (hooks.hooks.SessionStart[0].hooks ?? []).find((h) => h.command === PREWARM_COMMAND);
+  assert(warm, `the agent-guard pre-warm SessionStart hook is missing: ${PREWARM_COMMAND}`);
   assert(warm.async === true, "the pre-warm MUST be async, or a 33 MB cold download blocks session start");
-  assert(warm.shell === "bash", "the pre-warm uses bash syntax and must pin shell: bash");
-  assert(warm.command.includes("--version"), "the pre-warm must use --version: it exits before mode selection, so it needs no credentials and has no side effects");
-  assert(warm.command.trimEnd().endsWith("|| true"), "a failed pre-warm must never fail the session: it is only a cache warm");
-  assert(!warm.command.includes("--enforce-skill"), "the pre-warm must not run an enforcement pass");
-  assert(!warm.command.includes("--prefer-offline"),
-    "the pre-warm MUST hit the registry: it is the only thing that refreshes the cache to the latest agent-guard, which is what makes the governed hooks' --prefer-offline safe");
-  assert(!warm.command.includes("npm_config_fetch"),
-    "the pre-warm must keep npm's default retries and fetch timeout: it is async, has 180s and ends in || true, so retrying through a flaky network costs nobody anything — the tight bounds belong only where a hang would fail open");
+  const record = stubNpx({ stdout: "", exitCode: 1 });
+  const r = runHookCommand(warm.command, "{}");
+  assert(r.code === 0, `a failed pre-warm must never fail the session: it is only a cache warm, got exit=${r.code}`);
+  const seen = JSON.parse(readFileSync(record, "utf8"));
+  assert(seen.argv.includes(GOVERNANCE_AGENT_GUARD_SPEC) && seen.argv.includes("--version"),
+    `the pre-warm must run ${GOVERNANCE_AGENT_GUARD_SPEC} --version, the build the governed hooks run: ${seen.argv}`);
+  assert(!seen.argv.includes("--prefer-offline"), `the pre-warm must be able to reach the registry: ${seen.argv}`);
 });
 
 check("the governed hooks resolve from cache, so no Read pays a registry round trip", () => {
@@ -288,8 +290,8 @@ for (const event of GOVERNED_EVENTS) {
       `--waiver-helper must not reach agent-guard; it owns the waiver flow: ${seen.argv}`);
     assert(seen.argv[seen.argv.indexOf("--registry") + 1] === RELEASES_REGISTRY,
       `must default to the releases registry: ${seen.argv}`);
-    assert(seen.argv.includes("@jfrog/agent-guard"),
-      `the package spec must always be the unpinned "@jfrog/agent-guard": ${seen.argv}`);
+    assert(seen.argv.includes(GOVERNANCE_AGENT_GUARD_SPEC),
+      `the package spec must be the pinned ${GOVERNANCE_AGENT_GUARD_SPEC}: ${seen.argv}`);
     assert(seen.argv.includes("--prefer-offline"), `${event} must read the npx cache: ${seen.argv}`);
     // The VALUES, not just their presence: npm's defaults are 2 retries (backing off 10s then
     // 60s) and a 300000ms fetch timeout, and either would outlast the hook.
@@ -367,13 +369,13 @@ for (const event of GOVERNED_EVENTS) {
     assert(r.code === 2, `agent-guard blocked; the hook must propagate exit 2, got exit=${r.code}`);
   });
 
-  await check(`${event}: JFROG_AGENT_GUARD_REPO redirects the registry, and nothing can pin the version`, async () => {
+  await check(`${event}: JFROG_AGENT_GUARD_REPO redirects the registry, and the environment cannot change the version`, async () => {
     const record = stubNpx({ stdout: "" });
     const r = runHookCommand(commandFor(event), "{}", {
       extraEnv: {
         JFROG_AGENT_GUARD_REPO: "https://example.invalid/npm/dev/",
-        // Set on purpose: the pin mechanism was deliberately removed, so this must have NO effect.
-        // If a future edit reintroduces it, this check turns that back into a visible failure.
+        // Set on purpose: the governed machine must not pick which build governs it, so this
+        // must have NO effect.
         JFROG_AGENT_GUARD_VERSION: "0.0.0-master.1.gabc",
       },
     });
@@ -381,29 +383,28 @@ for (const event of GOVERNED_EVENTS) {
     const seen = JSON.parse(readFileSync(record, "utf8"));
     assert(seen.argv[seen.argv.indexOf("--registry") + 1] === "https://example.invalid/npm/dev/",
       `registry override ignored: ${seen.argv}`);
-    assert(seen.argv.includes("@jfrog/agent-guard"),
-      `the package spec must stay plain "@jfrog/agent-guard": ${seen.argv}`);
-    assert(!seen.argv.some((a) => a.startsWith("@jfrog/agent-guard@")),
-      `an env var pinned the version of a security control: ${seen.argv}`);
+    assert(seen.argv.includes(GOVERNANCE_AGENT_GUARD_SPEC),
+      `the package spec must stay ${GOVERNANCE_AGENT_GUARD_SPEC}: ${seen.argv}`);
   });
 }
 
-// agent-guard IS the enforcement. Letting the environment choose which build of it runs inverts
-// the trust relationship: the machine being governed would pick its own governor, and could hold
-// itself on a release that predates a policy. Every JFrog client invokes agent-guard unpinned;
-// the registry stays overridable (air-gapped / self-hosted mirrors), the version never does.
-await check("no hook can pin the agent-guard version", () => {
+// The Claude plugin directory blocks a launcher (npx, uvx, ...) without an exact version, and a
+// hook command with any variable other than ${CLAUDE_PLUGIN_ROOT}. So hook strings only start node
+// files in the plugin, and every agent-guard launch uses GOVERNANCE_AGENT_GUARD_SPEC.
+await check("agent-guard is pinned to an exact version and no hook string runs a launcher", () => {
+  assert(/^@jfrog\/agent-guard@\d+\.\d+\.\d+$/.test(GOVERNANCE_AGENT_GUARD_SPEC),
+    `GOVERNANCE_AGENT_GUARD_SPEC must be an exact X.Y.Z: ${GOVERNANCE_AGENT_GUARD_SPEC}`);
   for (const [event, entries] of Object.entries(hooks.hooks)) {
     for (const h of entries.flatMap((entry) => entry.hooks ?? [])) {
-      if (!h.command.includes("@jfrog/agent-guard")) continue;
-      assert(!h.command.includes("JFROG_AGENT_GUARD_VERSION"),
-        `${event} reintroduced a version-pin override: ${h.command}`);
-      assert(!/@jfrog\/agent-guard@/.test(h.command),
-        `${event} hard-pins the agent-guard version: ${h.command}`);
-      assert(h.command.includes("JFROG_AGENT_GUARD_REPO"),
-        `${event} dropped the registry override, which air-gapped installs depend on: ${h.command}`);
+      assert(!/\b(npx|bunx|uvx|dlx|pipx|uv run)\b/.test(h.command),
+        `${event} runs a package launcher in the hook string: ${h.command}`);
+      assert(!h.command.replaceAll("${CLAUDE_PLUGIN_ROOT}", "").includes("$"),
+        `${event} uses a variable other than \${CLAUDE_PLUGIN_ROOT}: ${h.command}`);
     }
   }
+  const localShadow = readFileSync(path.join(repoRoot, "modules", "core", "local-shadow-trigger.mjs"), "utf8");
+  assert(localShadow.includes("GOVERNANCE_AGENT_GUARD_SPEC") && !localShadow.includes("AGENT_GUARD_PACKAGE"),
+    "the Local Shadow scan must launch GOVERNANCE_AGENT_GUARD_SPEC");
 });
 
 rmSync(sandbox, { recursive: true, force: true });
