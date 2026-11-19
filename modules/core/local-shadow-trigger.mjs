@@ -40,7 +40,7 @@ import {
 import { axesFromAdapterIde, envWithHookUserAgent } from "./jf-user-agent.mjs";
 import { jpdGet } from "./jpd-get.mjs";
 import {
-  AGENT_GUARD_PACKAGE,
+  GOVERNANCE_AGENT_GUARD_SPEC,
   buildNpxSpawnOptions,
   quoteSpawnArgs,
   resolveAgentGuardBin,
@@ -176,7 +176,7 @@ async function startScanner(
           "--prefer-offline",
           "--registry",
           resolveAgentGuardNpmRegistry(env),
-          AGENT_GUARD_PACKAGE,
+          GOVERNANCE_AGENT_GUARD_SPEC,
           ...scanArgs,
         ],
         platform,
