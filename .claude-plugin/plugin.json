@@ -2,7 +2,7 @@
   "name": "jfrog",
   "displayName": "JFrog",
   "description": "Official JFrog plugin. Connect Claude Code to JFrog to manage, secure, and govern your software supply chain. Give agents the context to build secure, compliant software.",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "author": {
     "name": "JFrog Ltd.",
     "email": "devrel@jfrog.com",
@@ -11,6 +11,7 @@
   "repository": "https://github.com/jfrog/claude-plugin",
   "homepage": "https://jfrog.com",
   "license": "Apache-2.0",
+  "privacyPolicyUrl": "https://jfrog.com/privacy-notice/",
   "keywords": [
     "jfrog",
     "artifactory",
