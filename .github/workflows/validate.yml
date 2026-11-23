@@ -34,6 +34,19 @@ jobs:
       - name: Validate plugin layout
         run: node scripts/validate-claude-plugin.mjs
 
+      # The Claude plugin directory's own checks (a subset of what it runs on submission).
+      # Pinned so a new CLI release can't turn CI red without a change here; bump it deliberately.
+      - name: Install the Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.330
+
+      - name: Validate against the plugin directory checks
+        env:
+          DISABLE_AUTOUPDATER: "1"
+        run: claude plugin validate --profile directory --strict .
+
+      - name: Run plugin directory check unit tests
+        run: node --test scripts/plugin-directory-checks.test.mjs
+
       - name: Run MCP rewrite hook unit tests
         run: node --test scripts/claude-mcp-json-discover.test.mjs scripts/claude-align-mcp-json.test.mjs
 

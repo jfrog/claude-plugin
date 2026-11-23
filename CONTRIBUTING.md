@@ -16,7 +16,7 @@ All contributors must sign the [JFrog CLA](https://jfrog.com/cla/) before contri
 node scripts/validate-claude-plugin.mjs
 ```
 
-This checks `.claude-plugin/plugin.json` and walks every `skills/*/SKILL.md` for required YAML frontmatter. Before a release or directory submission, also run **`claude plugin validate`** (requires [Claude Code](https://code.claude.com/docs) CLI).
+This checks `.claude-plugin/plugin.json`, walks every `skills/*/SKILL.md` for required YAML frontmatter, and runs the [plugin directory pre-submission checks](https://claude.com/docs/plugins/pre-submission-checklist) that `claude plugin validate` skips (file sizes and types, names, README length, hook commands). CI also runs **`claude plugin validate --profile directory --strict .`**; run it locally with the [Claude Code](https://code.claude.com/docs) CLI.
 
 4. **Test** by loading the repository as the plugin (the repo root is the plugin root):
 
@@ -42,7 +42,7 @@ This downloads the pinned upstream tarball and replaces the contents of `skills/
 ## Pre-release checklist
 
 - [ ] `node scripts/validate-claude-plugin.mjs` passes.
-- [ ] `claude plugin validate` passes (before directory submission or major releases).
+- [ ] `claude plugin validate --profile directory --strict .` passes.
 - [ ] Version bumped in [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json) — required on every PR to `main`.
 - [ ] No secrets, credentials, or files under `**/local-cache/` committed.
 - [ ] If the skill tree changed: `pin` in `.github/scripts/sync-skills-vendor.json` matches the upstream tag the new tree was generated from.

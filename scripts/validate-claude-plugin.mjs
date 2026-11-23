@@ -8,6 +8,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import { checkDirectoryRules, listTrackedEntries } from "./plugin-directory-checks.mjs";
+
 const repoRoot = process.cwd();
 const errors = [];
 const warnings = [];
@@ -119,6 +121,14 @@ async function main() {
   }
 
   await validateSkills(repoRoot, pluginName);
+
+  try {
+    for (const message of checkDirectoryRules(repoRoot, listTrackedEntries(repoRoot))) {
+      addError(`plugin directory check ${message}`);
+    }
+  } catch (err) {
+    addError(err.message);
+  }
 
   summarizeAndExit();
 }
