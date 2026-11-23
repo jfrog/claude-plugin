@@ -4,7 +4,8 @@
 //   node local-shadow-trigger.mjs user_prompt_submit   UserPromptSubmit hook (every prompt)
 //
 // Flow:
-//   1. the default jf CLI server has an access token
+//   1. the AI Governance server (setup.json, see jfrog-ai-governance-config.mjs)
+//      is set and is a jf CLI server with an access token
 //   2. the backend says scanning is enabled (asked through `jf api`, see jpd-get.mjs);
 //      the answer is reused for an hour (SCANNING_CACHE_FILE); a 404 counts as off
 //   3. read the plugin version from plugin.json ("UNKNOWN" when unreadable)
@@ -42,11 +43,13 @@ import {
   safeErrorMessage,
 } from "./jf-identity.mjs";
 import { axesFromAdapterIde, envWithHookUserAgent } from "./jf-user-agent.mjs";
+import { resolveAiGovernanceConfig } from "./jfrog-ai-governance-config.mjs";
 import { jpdGet } from "./jpd-get.mjs";
 import { writeJsonAtomic } from "./json-file.mjs";
 import {
   GOVERNANCE_AGENT_GUARD_SPEC,
   buildNpxSpawnOptions,
+  isSafeRewriteIdentifier,
   quoteSpawnArgs,
   resolveAgentGuardBin,
   resolveAgentGuardNpmRegistry,
@@ -54,6 +57,7 @@ import {
 } from "./rewrite-mcp-json.mjs";
 
 export const RESULT = Object.freeze({
+  NO_AI_GOVERNANCE_SERVER: "no_ai_governance_server",
   NOT_LOGGED_IN: "not_logged_in",
   UNSUPPORTED_AUTH: "unsupported_auth",
   SCANNING_DISABLED: "scanning_disabled",
@@ -213,6 +217,21 @@ async function checkScanningEnabled(identity, { env, timeoutMs, getFn }) {
   return failed("response has no boolean 'enabled'");
 }
 
+export function buildScanArgs(serverId, session, pluginVersion, launch) {
+  return [
+    "--local-shadow-scan",
+    "--server",
+    serverId,
+    ...(session.id ? ["--session-id", session.id] : []),
+    ...(session.workspace ? ["--workspace", session.workspace] : []),
+    "--plugin-version",
+    pluginVersion,
+    "--harness",
+    HARNESS_ID,
+    ...(launch ? ["--launch-json", "-"] : []),
+  ];
+}
+
 // Writes the launch to the scanner's stdin and closes it. Resolves once the OS
 // has it, or with the error; it never rejects.
 function writeLaunch(stdin, launch, timeoutMs) {
@@ -244,17 +263,7 @@ async function startScanner(
   pluginVersion,
   launch,
 ) {
-  const scanArgs = [
-    "--local-shadow-scan",
-    ...(serverId ? ["--server", serverId] : []),
-    ...(session.id ? ["--session-id", session.id] : []),
-    ...(session.workspace ? ["--workspace", session.workspace] : []),
-    "--plugin-version",
-    pluginVersion,
-    "--harness",
-    HARNESS_ID,
-    ...(launch ? ["--launch-json", "-"] : []),
-  ];
+  const scanArgs = buildScanArgs(serverId, session, pluginVersion, launch);
   const bin = resolveAgentGuardBin(env);
   const command = bin ?? resolveNpxCommand(platform);
   const args = bin
@@ -319,6 +328,7 @@ async function runChecksAndStartScanner({
   session,
   payload,
   getIdentityFn,
+  resolveConfigFn,
   getFn,
   timeoutMs,
   spawnFn,
@@ -328,7 +338,24 @@ async function runChecksAndStartScanner({
   now,
   cacheNote,
 }) {
-  const { identity, cause } = getIdentityFn();
+  // A server without a project is fine: a Local Shadow report has no project.
+  const config = resolveConfigFn({ env });
+  if (config.status !== "ok" && config.status !== "no_project") {
+    return {
+      result: RESULT.NO_AI_GOVERNANCE_SERVER,
+      error: `AI Governance config: ${config.status}`,
+    };
+  }
+  const serverId = config.serverId;
+  // The id ends up on the scanner's command line (cmd.exe on Windows).
+  if (!isSafeRewriteIdentifier(serverId)) {
+    return {
+      result: RESULT.NO_AI_GOVERNANCE_SERVER,
+      error: "AI Governance server id is not a safe identifier",
+    };
+  }
+
+  const { identity, cause } = getIdentityFn(serverId);
   if (
     identity?.auth?.kind === "basic" ||
     cause === IdentityCause.JF_UNSUPPORTED_AUTH
@@ -376,7 +403,7 @@ async function runChecksAndStartScanner({
       env,
       platform,
       spawnFn,
-      identity.serverId,
+      serverId,
       session,
       pluginVersion,
       launch,
@@ -426,6 +453,7 @@ export async function runLocalShadowTrigger(trigger, overrides = {}) {
     payload: undefined,
     buildLaunchFn: buildLaunch,
     getIdentityFn: getPlatformIdentity,
+    resolveConfigFn: resolveAiGovernanceConfig,
     getFn: jpdGet,
     timeoutMs: REQUEST_TIMEOUT_MS,
     spawnFn: spawn,
