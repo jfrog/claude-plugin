@@ -156,15 +156,18 @@ on a developer's workstation, so the organization can see what its developers'
 Claude Code environments run and spot unapproved or risky assets.
 
 **Who controls it.** The scan is off by default. It runs only when your JFrog Platform
-administrator has enabled it for your account. The plugin checks this on every new session
-(`GET /aisec/api/v1/local-shadow/scanning-enabled`). There is no per-user setting
+administrator has enabled it for your account. The plugin checks this
+(`GET /aisec/api/v1/local-shadow/scanning-enabled`) and keeps the answer for an hour, so
+turning the scan on or off takes effect within the hour. There is no per-user setting
 in the plugin: like other endpoint security controls, it is managed by the organization.
 
-**When it runs.** Once per new Claude Code session (not on resume, `/clear` or
-compaction), in the background, and only if you are logged in to the JFrog CLI with an
-access token over HTTPS.
+**When it runs.** At most once an hour per Claude Code session: the plugin offers a scan
+on every session start and every prompt, and Agent Guard skips it if the session was
+scanned (successfully or not) within the last hour or is being scanned right now. It runs
+in the background, and only if you are logged in to the JFrog CLI with an access token
+over HTTPS.
 
-**What it sends.** One report per session to your organization's own JFrog Platform
+**What it sends.** One report per scan to your organization's own JFrog Platform
 (`<your-platform>/aisec/api/v1/local-shadow/reports`). No scan data is sent to JFrog or
 any third party. The report contains:
 
@@ -181,7 +184,8 @@ sends only the fields listed above; it does not send source code, prompts, conve
 or credentials.
 
 **Logs.** `~/.jfrog/shadow/local-shadow-hook.log` (whether the scan started and why not)
-and `~/.jfrog/shadow/local-shadow.log` (scan results).
+and `~/.jfrog/shadow/local-shadow.log` (scan results). `~/.jfrog/shadow/sessions.json`
+holds each session's last scan; delete it to let every session scan on its next prompt.
 
 ---
 
